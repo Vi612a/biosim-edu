@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioSim Edu - Suite Bioinformática Educativa</title>
+    <meta name="description" content="Simulador web interactivo de bioinformática para aprender alineamiento de secuencias, filogenia, modelado 3D y genómica de forma didáctica.">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <!-- ENCABEZADO PRINCIPAL -->
+    <header class="app-header">
+        <div class="logo-area">
+            <div class="logo-title-row">
+                <h1>🧪 BioSim Edu</h1>
+                <span class="version-badge">v1.0-dev</span>
+            </div>
+            <p>Plataforma interactiva para la enseñanza de la Bioinformática</p>
+        </div>
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-target="mod-alignment">🧬 Alineamiento</button>
+            <button class="nav-tab" data-target="mod-phylogeny">🌳 Filogenia</button>
+            <button class="nav-tab" data-target="mod-structure">⚛️ Modelado 3D</button>
+            <button class="nav-tab" data-target="mod-genomics">🧩 Genómica (De Bruijn)</button>
+            <button class="nav-tab" data-target="mod-guide">📖 Guía Didáctica</button>
+        </nav>
+    </header>
+
+    <!-- CONTENEDOR DE PESTAÑAS -->
+    <main class="main-container">
+
+        <!-- ========================================== -->
+        <!-- MÓDULO 1: ALINEAMIENTO DE SECUENCIAS       -->
+        <!-- ========================================== -->
+        <section id="mod-alignment" class="tab-content active">
+            <div class="workspace-grid">
+                
+                <!-- COLUMNA IZQUIERDA: CONTROLES Y PARÁMETROS -->
+                <aside class="controls-sidebar">
+                    <div class="panel-card">
+                        <h2 class="panel-title">🔬 Parámetros y Secuencias</h2>
+                        
+                        <!-- SELECTOR DE PRESETS -->
+                        <div class="form-group">
+                            <label class="form-label" for="preset-select">Casos de Estudio Pre-cargados:</label>
+                            <select id="preset-select" class="form-select"></select>
+                        </div>
+
+                        <!-- AVISO DE MODO LECTURA / EDICIÓN -->
+                        <div id="edit-notice" class="notice-box notice-locked"></div>
+
+                        <!-- SECUENCIAS INPUT -->
+                        <div class="form-group">
+                            <label class="form-label" for="seq1-input">Secuencia 1 (FASTA o texto):</label>
+                            <textarea id="seq1-input" class="form-textarea readonly-box" spellcheck="false" readonly></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="seq2-input">Secuencia 2 (FASTA o texto):</label>
+                            <textarea id="seq2-input" class="form-textarea readonly-box" spellcheck="false" readonly></textarea>
+                        </div>
+
+                        <!-- ALGORITMO INFO -->
+                        <div class="algo-badge-box">
+                            <strong>⚙️ Algoritmo Activo:</strong> Needleman-Wunsch (Alineamiento Global)
+                        </div>
+
+                        <!-- SLIDERS DE PUNTUACIÓN -->
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>Coincidencia (Match):</span>
+                                <span id="match-val" class="slider-val">+5</span>
+                            </div>
+                            <input type="range" id="match-score" min="1" max="10" value="5">
+                        </div>
+
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>Diferencia (Mismatch):</span>
+                                <span id="mismatch-val" class="slider-val">-2</span>
+                            </div>
+                            <input type="range" id="mismatch-score" min="-10" max="0" value="-2">
+                        </div>
+
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>Penalización por Brecha (Gap):</span>
+                                <span id="gap-val" class="slider-val">-2</span>
+                            </div>
+                            <input type="range" id="gap-score" min="-10" max="0" value="-2">
+                        </div>
+
+                        <!-- BOTONES DE ACCIÓN -->
+                        <div class="btn-group">
+                            <button id="btn-calculate" class="btn btn-primary">⚡ Calcular Alineamiento</button>
+                            <button id="btn-play" class="btn btn-secondary">▶️ Reproducir Paso a Paso</button>
+                            
+                            <!-- CONTROLES DIDÁCTICOS DE REPRODUCCIÓN (PASO A PASO MANUAL Y VELOCIDAD) -->
+                            <div id="player-controls" class="player-controls-box hidden">
+                                <div style="font-size: 0.8rem; color: var(--accent-cyan); margin-bottom: 0.5rem; font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                                    <span>🕹️ Control de Pasos:</span>
+                                    <span id="player-status" style="font-size: 0.75rem; color: var(--accent-yellow);">Calculando...</span>
+                                </div>
+                                <div style="display: flex; gap: 0.4rem; margin-bottom: 0.6rem;">
+                                    <button id="btn-step-next" class="btn btn-secondary" style="flex:1; padding: 0.45rem; font-size: 0.8rem; background: rgba(0, 255, 204, 0.15); border-color: var(--accent-cyan); color: #fff;">⏭️ +1 Celda</button>
+                                    <button id="btn-step-row" class="btn btn-secondary" style="flex:1; padding: 0.45rem; font-size: 0.8rem; background: rgba(58, 134, 255, 0.15); border-color: var(--accent-blue); color: #fff;">⏩ +1 Fila</button>
+                                </div>
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                    <span>⚡ Velocidad:</span>
+                                    <select id="anim-speed" class="form-select" style="width: auto; padding: 0.2rem 0.5rem; font-size: 0.8rem;">
+                                        <option value="300">Lenta (300 ms)</option>
+                                        <option value="80" selected>Normal (80 ms)</option>
+                                        <option value="15">Rápida (15 ms)</option>
+                                        <option value="manual">⏸️ Solo Manual</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <button id="btn-challenge" class="btn btn-challenge">🎯 Modo Desafío Traceback</button>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- COLUMNA DERECHA: RESULTADOS, MATRIZ E INSPECTOR -->
+                <section class="results-display">
+                    
+                    <!-- ÁREA DE RESULTADOS -->
+                    <div id="results-area" class="hidden">
+                        
+                        <!-- ESTADÍSTICAS DEL ALINEAMIENTO -->
+                        <div id="stats-container" class="stats-grid"></div>
+
+                        <!-- VISUALIZADOR DE SECUENCIAS ALINEADAS -->
+                        <div class="panel-card">
+                            <h3 class="panel-title">🧬 Alineamiento Visual Óptimo</h3>
+                            <div id="alignment-visual" class="alignment-visual-box"></div>
+                        </div>
+
+                        <!-- MATRIZ INTERACTIVA Y MAPA DE CALOR -->
+                        <div class="panel-card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                                <h3 class="panel-title" style="border:none; margin:0; padding:0;">📊 Matriz de Puntuación (Traceback)</h3>
+                                <div>
+                                    <label style="font-size: 0.8rem; color: var(--text-secondary); margin-right: 0.5rem;">Vista:</label>
+                                    <select id="view-mode-select" class="form-select" style="width: auto; padding: 0.3rem 0.6rem;">
+                                        <option value="auto">Automática (Micro para cortas / Heatmap para largas)</option>
+                                        <option value="micro">Modo Micro (Tabla Interactiva con Celdas)</option>
+                                        <option value="macro">Modo Macro (Mapa de Calor / Heatmap)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                                💡 <strong style="color:var(--accent-cyan);">Tip Didáctico:</strong> Pasa el mouse o haz clic sobre las celdas de la tabla para abrir la <strong>Pizarra Didáctica</strong> e inspeccionar la fórmula matemática exacta que construyó esa celda.
+                            </p>
+
+                            <!-- Contenedor de Tabla o Canvas -->
+                            <div id="matrix-container" class="matrix-wrapper"></div>
+                            <canvas id="heatmap-canvas" class="hidden" width="600" height="400"></canvas>
+
+                            <!-- LA PIZARRA DIDÁCTICA (INSPECTOR DE CELDA) -->
+                            <div id="chalkboard-content" class="chalkboard-box">
+                                <div class="chalkboard-title">📍 La Pizarra Didáctica</div>
+                                <p style="color: var(--text-secondary);">Selecciona una celda de la matriz arriba para desglosar el cálculo dinámico de puntuaciones.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- MÓDULO 2: FILOGENIA (ESQUELETO)            -->
+        <!-- ========================================== -->
+        <section id="mod-phylogeny" class="tab-content">
+            <div class="placeholder-card">
+                <span class="placeholder-icon">🌳</span>
+                <h2>Módulo de Filogenia (Árboles Evolutivos)</h2>
+                <p>En este módulo implementaremos la construcción dinámica de árboles filogenéticos utilizando los algoritmos <strong>UPGMA</strong> y <strong>Neighbor-Joining</strong> a partir de matrices de distancia genética ingresadas por los estudiantes.</p>
+                <div style="margin-top: 1.5rem; display: inline-block; background: rgba(0, 255, 204, 0.1); border: 1px solid var(--accent-cyan); padding: 0.6rem 1.2rem; border-radius: 50px; font-size: 0.85rem; color: var(--accent-cyan);">
+                    🚧 Estructura planeada - Próximo módulo a integrar
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- MÓDULO 3: MODELADO ESTRUCTURAL 3D          -->
+        <!-- ========================================== -->
+        <section id="mod-structure" class="tab-content">
+            <div class="placeholder-card">
+                <span class="placeholder-icon">⚛️</span>
+                <h2>Módulo de Modelado Estructural Tridimensional</h2>
+                <p>Integración con la librería molecular <strong>3Dmol.js</strong> para visualizar estructuras de proteínas en tiempo real y simular el efecto de mutaciones puntuales (como en el caso de la hemoglobina falciforme HbS en el espacio 3D).</p>
+                <div style="margin-top: 1.5rem; display: inline-block; background: rgba(58, 134, 255, 0.1); border: 1px solid var(--accent-blue); padding: 0.6rem 1.2rem; border-radius: 50px; font-size: 0.85rem; color: var(--accent-blue);">
+                    🚧 Estructura planeada - Próximo módulo a integrar
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- MÓDULO 4: GENÓMICA (GRÁFICOS DE DE BRUIJN) -->
+        <!-- ========================================== -->
+        <section id="mod-genomics" class="tab-content">
+            <div class="placeholder-card">
+                <span class="placeholder-icon">🧩</span>
+                <h2>Módulo de Genómica: Ensamblaje y Gráficos de De Bruijn</h2>
+                <p>Simulador interactivo donde los estudiantes ingresarán fragmentos de lecturas de ADN (reads en FASTA) para fracturarlos en <em>k-mers</em> y construir visualmente un <strong>Gráfico de De Bruijn</strong>, ilustrando cómo se ensamblan los genomas en bioinformática computacional.</p>
+                <div style="margin-top: 1.5rem; display: inline-block; background: rgba(131, 56, 236, 0.1); border: 1px solid var(--accent-purple); padding: 0.6rem 1.2rem; border-radius: 50px; font-size: 0.85rem; color: var(--accent-purple);">
+                    🚧 Estructura planeada - Próximo módulo a integrar
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- GUÍA DIDÁCTICA Y TUTORIALES                -->
+        <!-- ========================================== -->
+        <section id="mod-guide" class="tab-content">
+            <div class="panel-card" style="max-width: 900px; margin: 0 auto;">
+                <h2 class="panel-title">📖 Guía Rápida: ¿Cómo usar este simulador en clase?</h2>
+                <div style="line-height: 1.8; color: var(--text-secondary); margin-top: 1rem;">
+                    <h3 style="color: var(--text-primary); margin-top: 1rem;">1. ¿Qué es el Alineamiento de Secuencias?</h3>
+                    <p>En bioinformática, alinear dos secuencias de ADN o proteínas nos permite descubrir qué tan emparentadas están evolutivamente o identificar mutaciones causantes de enfermedades. Para hacerlo sin que las computadoras tarden años, usamos <strong>Programación Dinámica</strong>.</p>
+                    
+                    <h3 style="color: var(--text-primary); margin-top: 1.5rem;">2. Algoritmo Global (Needleman-Wunsch)</h3>
+                    <p>Intenta alinear las dos secuencias de principio a fin. Es el estándar para comparar genes o proteínas homólogas de tamaño similar (ej. Hemoglobina humana vs. ratón). Utiliza tres puntuaciones: coincidencia (+), diferencia (-) y brecha o gap (-).</p>
+
+                    <h3 style="color: var(--text-primary); margin-top: 1.5rem;">3. Características Didácticas del Simulador</h3>
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
+                        <li><strong>Pizarra Didáctica:</strong> En lugar de solo mostrarte el resultado, haz clic en cualquier celda de la matriz para ver la fórmula matemática con los valores exactos de Diagonal, Arriba e Izquierda.</li>
+                        <li><strong>Reproducción Paso a Paso:</strong> Presiona "Reproducir Paso a Paso" para ver cómo el algoritmo recorre la matriz resolviendo subproblemas.</li>
+                        <li><strong>Modo Desafío (Traceback Game):</strong> Pon a prueba tus alumnos. El simulador ocultará la línea azul del camino óptimo y el estudiante deberá hacer clic en las celdas correctas para retroceder desde el final hasta el inicio.</li>
+                        <li><strong>Mapa de Calor (Heatmap):</strong> Si cargas moléculas reales de más de 35 aminoácidos, el simulador cambiará automáticamente a un mapa de color interactivo para que no te pierdas en miles de números.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer style="text-align: center; padding: 2rem; border-top: 1px solid var(--border-color); color: var(--text-secondary); font-size: 0.85rem; margin-top: 3rem;">
+        Desarrollado para fines pedagógicos en bioinformática &bull; HTML5, CSS3 y JS Vanilla &bull; Listo para GitHub Pages
+    </footer>
+
+    <!-- SCRIPTS -->
+    <script src="js/presets.js"></script>
+    <script src="js/alignment.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

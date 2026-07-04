@@ -1,0 +1,610 @@
+/**
+ * app.js - Controlador Principal de la Interfaz y Módulos de BioSim Edu
+ * Gestiona navegación, presets, visualización responsiva, Pizarra Didáctica de altura constante blindada (310px),
+ * reproductor paso a paso con controles manuales (+1 celda / +1 fila / velocidad) y nueva arquitectura de matriz
+ * donde los aminoácidos están en contenedores físicos separados (sin position:sticky en tablas).
+ */
+
+document.addEventListener("DOMContentLoaded", () => {
+    // Inicializar el motor de alineamiento Needleman-Wunsch
+    const sim = new AlignmentSimulator();
+    
+    // Referencias DOM - Navegación
+    const navButtons = document.querySelectorAll(".nav-tab");
+    const tabContents = document.querySelectorAll(".tab-content");
+
+    // Referencias DOM - Módulo de Alineamiento
+    const presetSelect = document.getElementById("preset-select");
+    const seq1Input = document.getElementById("seq1-input");
+    const seq2Input = document.getElementById("seq2-input");
+    const editNotice = document.getElementById("edit-notice");
+    const matchInput = document.getElementById("match-score");
+    const mismatchInput = document.getElementById("mismatch-score");
+    const gapInput = document.getElementById("gap-score");
+    
+    // Sliders displays
+    const matchValDisplay = document.getElementById("match-val");
+    const mismatchValDisplay = document.getElementById("mismatch-val");
+    const gapValDisplay = document.getElementById("gap-val");
+
+    // Botones y controles de acción / reproducción
+    const btnCalculate = document.getElementById("btn-calculate");
+    const btnPlay = document.getElementById("btn-play");
+    const playerControls = document.getElementById("player-controls");
+    const btnStepNext = document.getElementById("btn-step-next");
+    const btnStepRow = document.getElementById("btn-step-row");
+    const animSpeedSelect = document.getElementById("anim-speed");
+    const playerStatus = document.getElementById("player-status");
+    const btnChallenge = document.getElementById("btn-challenge");
+    const viewModeSelect = document.getElementById("view-mode-select");
+
+    // Contenedores de resultados
+    const resultsArea = document.getElementById("results-area");
+    const statsContainer = document.getElementById("stats-container");
+    const alignmentVisual = document.getElementById("alignment-visual");
+    const matrixContainer = document.getElementById("matrix-container");
+    const heatmapCanvas = document.getElementById("heatmap-canvas");
+    const chalkboardContent = document.getElementById("chalkboard-content");
+
+    // --- 1. GESTIÓN DE PESTAÑAS (NAVEGACIÓN) ---
+    navButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+            navButtons.forEach(b => b.classList.remove("active"));
+            tabContents.forEach(c => c.classList.remove("active"));
+
+            btn.classList.add("active");
+            const targetId = btn.getAttribute("data-target");
+            const targetSection = document.getElementById(targetId);
+            if (targetSection) {
+                targetSection.classList.add("active");
+            }
+        });
+    });
+
+    // --- 2. GESTIÓN DE PRESETS DIDÁCTICOS (SOLO LECTURA VS EDICIÓN) ---
+    function loadPreset(key) {
+        if (!PRESETS[key]) return;
+        const p = PRESETS[key];
+        seq1Input.value = p.seq1;
+        seq2Input.value = p.seq2;
+        
+        if (p.type !== "custom") {
+            seq1Input.readOnly = true;
+            seq2Input.readOnly = true;
+            seq1Input.classList.add("readonly-box");
+            seq2Input.classList.add("readonly-box");
+            if (editNotice) {
+                editNotice.innerHTML = `🔒 <strong>Modo Lectura:</strong> Estas secuencias de estudio están bloqueadas para evitar modificaciones accidentales. Para escribir tus propias secuencias, selecciona <strong>"✏️ Secuencia Personalizada"</strong> en el menú superior.`;
+                editNotice.className = "notice-box notice-locked";
+            }
+            matchInput.value = p.match;
+            mismatchInput.value = p.mismatch;
+            gapInput.value = p.gap;
+            updateSliderDisplays();
+        } else {
+            seq1Input.readOnly = false;
+            seq2Input.readOnly = false;
+            seq1Input.classList.remove("readonly-box");
+            seq2Input.classList.remove("readonly-box");
+            if (editNotice) {
+                editNotice.innerHTML = `✏️ <strong>Modo Edición Libre:</strong> Ahora puedes escribir, pegar o modificar directamente tus secuencias en las cajas de texto de abajo.`;
+                editNotice.className = "notice-box notice-editable";
+            }
+        }
+    }
+
+    if (presetSelect) {
+        presetSelect.innerHTML = "";
+        Object.keys(PRESETS).forEach(key => {
+            const opt = document.createElement("option");
+            opt.value = key;
+            opt.textContent = PRESETS[key].name;
+            presetSelect.appendChild(opt);
+        });
+
+        presetSelect.addEventListener("change", (e) => {
+            loadPreset(e.target.value);
+            runSimulation();
+        });
+
+        loadPreset("short_dna");
+    }
+
+    // --- 3. ACTUALIZACIÓN DE SLIDERS ---
+    function updateSliderDisplays() {
+        if (matchValDisplay) matchValDisplay.textContent = `+${matchInput.value}`;
+        if (mismatchValDisplay) mismatchValDisplay.textContent = mismatchInput.value;
+        if (gapValDisplay) gapValDisplay.textContent = gapInput.value;
+    }
+
+    [matchInput, mismatchInput, gapInput].forEach(slider => {
+        if (slider) {
+            slider.addEventListener("input", () => {
+                updateSliderDisplays();
+                runSimulation();
+            });
+        }
+    });
+
+    if (viewModeSelect) {
+        viewModeSelect.addEventListener("change", () => {
+            if (!sim.isPlaying) {
+                renderMatrixOrHeatmap();
+            }
+        });
+    }
+
+    // --- 4. EJECUCIÓN DEL ALGORITMO ---
+    function runSimulation() {
+        stopStepAnimation();
+        if (playerControls) playerControls.classList.add("hidden");
+
+        const s1 = cleanFasta(seq1Input.value) || "A";
+        const s2 = cleanFasta(seq2Input.value) || "A";
+        
+        sim.compute(
+            s1, 
+            s2, 
+            matchInput.value, 
+            mismatchInput.value, 
+            gapInput.value
+        );
+
+        resultsArea.classList.remove("hidden");
+        renderStats();
+        renderAlignmentVisual();
+        renderMatrixOrHeatmap();
+        updateChalkboard(sim.scoreMatrix.length - 1, sim.scoreMatrix[0].length - 1, false);
+    }
+
+    if (btnCalculate) btnCalculate.addEventListener("click", runSimulation);
+
+    [seq1Input, seq2Input].forEach(input => {
+        if (input) {
+            input.addEventListener("input", () => {
+                if (!input.readOnly) runSimulation();
+            });
+        }
+    });
+
+    // --- 5. RENDERIZADO DE ESTADÍSTICAS Y ALINEAMIENTO ---
+    function renderStats() {
+        if (!statsContainer) return;
+        const s1Len = sim.alignedSeq1.length;
+        let matches = 0;
+        let mismatches = 0;
+        let gaps = 0;
+        
+        for (let i = 0; i < s1Len; i++) {
+            if (sim.alignedSeq1[i] === '-' || sim.alignedSeq2[i] === '-') {
+                gaps++;
+            } else if (sim.alignedSeq1[i] === sim.alignedSeq2[i]) {
+                matches++;
+            } else {
+                mismatches++;
+            }
+        }
+        const identity = s1Len > 0 ? ((matches / s1Len) * 100).toFixed(1) : 0;
+
+        statsContainer.innerHTML = `
+            <div class="stat-box">
+                <span class="stat-label">Puntaje Global</span>
+                <span class="stat-value highlight-score">${sim.maxScore}</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Identidad</span>
+                <span class="stat-value">${identity}%</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Coincidencias (Matches)</span>
+                <span class="stat-value text-green">${matches}</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Diferencias (Mismatches)</span>
+                <span class="stat-value text-yellow">${mismatches}</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Brechas (Gaps)</span>
+                <span class="stat-value text-red">${gaps}</span>
+            </div>
+        `;
+    }
+
+    function renderAlignmentVisual() {
+        if (!alignmentVisual) return;
+        
+        const blockSize = 20;
+        const s1 = sim.alignedSeq1;
+        const s2 = sim.alignedSeq2;
+        const sym = sim.alignmentSymbols;
+
+        let html = `<div class="alignment-legend">
+                        <span><strong class="char-box char-match" style="width:20px;height:20px;display:inline-flex;">A</strong> Coincidencia (Match)</span>
+                        <span><strong class="char-box char-mismatch" style="width:20px;height:20px;display:inline-flex;">X</strong> Diferencia (Mismatch)</span>
+                        <span><strong class="char-box char-gap" style="width:20px;height:20px;display:inline-flex;">-</strong> Brecha (Gap)</span>
+                    </div>`;
+        html += `<div class="alignment-track">`;
+
+        for (let i = 0; i < s1.length; i += blockSize) {
+            const sub1 = s1.slice(i, i + blockSize);
+            const sub2 = s2.slice(i, i + blockSize);
+            const subSym = sym.slice(i, i + blockSize);
+
+            html += `<div class="alignment-block">`;
+            
+            html += `<div class="seq-row"><span class="seq-hdr">Sec 1 (${i+1}-${Math.min(s1.length, i+blockSize)}):</span><div class="chars-container">`;
+            for (let c = 0; c < sub1.length; c++) {
+                const char = sub1[c];
+                const cls = char === '-' ? 'char-gap' : (subSym[c] === '|' ? 'char-match' : 'char-mismatch');
+                html += `<span class="char-box ${cls}" title="Posición ${i+c+1}: ${char}">${char}</span>`;
+            }
+            html += `</div></div>`;
+
+            html += `<div class="sym-row"><span class="seq-hdr"></span><div class="chars-container">`;
+            for (let c = 0; c < subSym.length; c++) {
+                const char1 = sub1[c];
+                const char2 = sub2[c];
+                let symChar = '&nbsp;';
+                let symCls = '';
+                if (char1 === '-' || char2 === '-') {
+                    symChar = ' ';
+                } else if (char1 === char2) {
+                    symChar = '|';
+                    symCls = 'sym-match';
+                } else {
+                    symChar = '•';
+                    symCls = 'sym-mismatch';
+                }
+                html += `<span class="sym-box ${symCls}">${symChar}</span>`;
+            }
+            html += `</div></div>`;
+
+            html += `<div class="seq-row"><span class="seq-hdr">Sec 2 (${i+1}-${Math.min(s2.length, i+blockSize)}):</span><div class="chars-container">`;
+            for (let c = 0; c < sub2.length; c++) {
+                const char = sub2[c];
+                const cls = char === '-' ? 'char-gap' : (subSym[c] === '|' ? 'char-match' : 'char-mismatch');
+                html += `<span class="char-box ${cls}" title="Posición ${i+c+1}: ${char}">${char}</span>`;
+            }
+            html += `</div></div>`;
+
+            html += `</div>`;
+        }
+        html += `</div>`;
+        alignmentVisual.innerHTML = html;
+    }
+
+    // --- 6. RENDERIZADO DE MATRIZ O MAPA DE CALOR ---
+    function renderMatrixOrHeatmap() {
+        const rows = sim.scoreMatrix.length;
+        const cols = sim.scoreMatrix[0].length;
+        const isMacro = (rows > 35 || cols > 35) || (viewModeSelect && viewModeSelect.value === "macro");
+
+        if (isMacro && (!viewModeSelect || viewModeSelect.value !== "micro")) {
+            if (matrixContainer) matrixContainer.classList.add("hidden");
+            if (heatmapCanvas) {
+                heatmapCanvas.classList.remove("hidden");
+                drawHeatmap();
+            }
+        } else {
+            if (heatmapCanvas) heatmapCanvas.classList.add("hidden");
+            if (matrixContainer) {
+                matrixContainer.classList.remove("hidden");
+                drawInteractiveTable();
+            }
+        }
+    }
+
+    /**
+     * ARQUITECTURA DE MATRIZ SEPARADA:
+     * Separa físicamente los aminoácidos en contenedores externos (Top y Left Viewports)
+     * sincronizados con el scroll de la tabla numérica interna (Data Viewport).
+     * ¡Esto elimina al 100% bugs de transparencia, superposición y recortes de CSS Grid/Table Sticky!
+     */
+    function drawInteractiveTable() {
+        if (!matrixContainer) return;
+        const rows = sim.scoreMatrix.length;
+        const cols = sim.scoreMatrix[0].length;
+
+        // 1. Encabezado superior (Secuencia 1)
+        let topHeadersHtml = `<div class="header-cell" title="Brecha (Gap) inicial">-</div>`;
+        for (let j = 1; j < cols; j++) {
+            topHeadersHtml += `<div class="header-cell" title="Columna ${j}: ${sim.seq1[j - 1]}">${sim.seq1[j - 1]}</div>`;
+        }
+
+        // 2. Encabezado izquierdo (Secuencia 2)
+        let leftHeadersHtml = `<div class="header-cell" title="Brecha (Gap) inicial">-</div>`;
+        for (let i = 1; i < rows; i++) {
+            leftHeadersHtml += `<div class="header-cell" title="Fila ${i}: ${sim.seq2[i - 1]}">${sim.seq2[i - 1]}</div>`;
+        }
+
+        // 3. Tabla de datos numéricos puros (sin cabeceras TH)
+        let dataTableHtml = `<table class="score-data-table"><tbody>`;
+        for (let i = 0; i < rows; i++) {
+            dataTableHtml += `<tr>`;
+            for (let j = 0; j < cols; j++) {
+                const val = sim.scoreMatrix[i][j];
+                const isOptimal = sim.isInOptimalPath(i, j);
+                const cellClass = isOptimal ? 'cell-optimal' : '';
+                dataTableHtml += `<td class="${cellClass}" data-row="${i}" data-col="${j}">
+                                    <span class="val">${val}</span>
+                                  </td>`;
+            }
+            dataTableHtml += `</tr>`;
+        }
+        dataTableHtml += `</tbody></table>`;
+
+        // 4. Estructura Grid completa
+        const fullLayout = `
+            <div class="matrix-layout-container">
+                <div class="matrix-corner" title="Secuencia 2 (Vertical) \\ Secuencia 1 (Horizontal)">S2\\S1</div>
+                <div id="top-header-viewport" class="top-header-viewport">
+                    <div class="top-header-content" style="width: ${cols * 38}px;">
+                        ${topHeadersHtml}
+                    </div>
+                </div>
+                <div id="left-header-viewport" class="left-header-viewport">
+                    <div class="left-header-content" style="height: ${rows * 38}px;">
+                        ${leftHeadersHtml}
+                    </div>
+                </div>
+                <div id="data-viewport" class="data-viewport">
+                    ${dataTableHtml}
+                </div>
+            </div>
+        `;
+
+        matrixContainer.innerHTML = fullLayout;
+
+        // 5. SINCRONIZADOR DE SCROLL PERFECTO ENTRE VIEWPORTS
+        const dataViewport = document.getElementById("data-viewport");
+        const topViewport = document.getElementById("top-header-viewport");
+        const leftViewport = document.getElementById("left-header-viewport");
+
+        if (dataViewport && topViewport && leftViewport) {
+            dataViewport.addEventListener("scroll", () => {
+                topViewport.scrollLeft = dataViewport.scrollLeft;
+                leftViewport.scrollTop = dataViewport.scrollTop;
+            });
+        }
+
+        // 6. Agregar eventos de inspección a las celdas numéricas
+        const cells = matrixContainer.querySelectorAll("td");
+        cells.forEach(cell => {
+            cell.addEventListener("mouseenter", () => {
+                if (!sim.isPlaying) {
+                    const r = parseInt(cell.getAttribute("data-row"));
+                    const c = parseInt(cell.getAttribute("data-col"));
+                    updateChalkboard(r, c, false);
+                    cells.forEach(td => td.classList.remove("cell-hover"));
+                    cell.classList.add("cell-hover");
+                }
+            });
+        });
+    }
+
+    function drawHeatmap() {
+        if (!heatmapCanvas) return;
+        const ctx = heatmapCanvas.getContext("2d");
+        const rows = sim.scoreMatrix.length;
+        const cols = sim.scoreMatrix[0].length;
+
+        const cellW = Math.max(2, heatmapCanvas.width / cols);
+        const cellH = Math.max(2, heatmapCanvas.height / rows);
+
+        let min = Infinity, max = -Infinity;
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                if (sim.scoreMatrix[i][j] < min) min = sim.scoreMatrix[i][j];
+                if (sim.scoreMatrix[i][j] > max) max = sim.scoreMatrix[i][j];
+            }
+        }
+        const range = max - min || 1;
+
+        ctx.clearRect(0, 0, heatmapCanvas.width, heatmapCanvas.height);
+
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                const val = sim.scoreMatrix[i][j];
+                const norm = (val - min) / range;
+                const hue = 240 - (norm * 180);
+                const lightness = 20 + (norm * 50);
+                ctx.fillStyle = `hsl(${hue}, 80%, ${lightness}%)`;
+                ctx.fillRect(j * cellW, i * cellH, cellW + 0.5, cellH + 0.5);
+            }
+        }
+
+        ctx.strokeStyle = "#00ffcc";
+        ctx.lineWidth = Math.max(2, cellW / 2);
+        ctx.shadowColor = "#00ffcc";
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        sim.optimalPath.forEach((coord, idx) => {
+            const x = (coord[1] + 0.5) * cellW;
+            const y = (coord[0] + 0.5) * cellH;
+            if (idx === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+    }
+
+    // --- 7. LA PIZARRA DIDÁCTICA (ALTURA Y TAMAÑO CONSTANTE BLINDADO) ---
+    function updateChalkboard(i, j, hideOptimal = false) {
+        if (!chalkboardContent || !sim.calcHistory[i] || !sim.calcHistory[i][j]) return;
+        const h = sim.calcHistory[i][j];
+        
+        let html = `<div class="chalkboard-title">📍 Inspeccionando Celda (${i}, ${j})</div>`;
+        html += `<div class="chalkboard-val">Puntaje Calculado: <strong class="text-glow">${h.val}</strong></div>`;
+        html += `<div class="chalkboard-formula">${h.formula.replace(/\n/g, '<br>')}</div>`;
+        
+        if (!hideOptimal && sim.isInOptimalPath(i, j)) {
+            html += `<div class="optimal-badge">✨ Esta celda forma parte del Camino Óptimo de Traceback</div>`;
+        }
+        
+        chalkboardContent.innerHTML = html;
+    }
+
+    // --- 8. REPRODUCTOR PASO A PASO DIDÁCTICO (MANUAL + VELOCIDAD) ---
+    let animCells = [];
+    let animIdx = 0;
+
+    function stopStepAnimation() {
+        if (sim.animTimer) clearInterval(sim.animTimer);
+        sim.isPlaying = false;
+        if (btnPlay) btnPlay.innerHTML = `<i class="icon">▶️</i> Reproducir Paso a Paso`;
+        if (viewModeSelect) viewModeSelect.disabled = false;
+        if (playerStatus) playerStatus.textContent = "Pausado / Detenido";
+    }
+
+    function finishStepAnimation() {
+        stopStepAnimation();
+        if (playerControls) playerControls.classList.add("hidden");
+        
+        animCells.forEach(td => {
+            const r = parseInt(td.getAttribute("data-row"));
+            const c = parseInt(td.getAttribute("data-col"));
+            if (sim.isInOptimalPath(r, c)) td.classList.add("cell-optimal");
+        });
+        
+        const lastTd = animCells[animCells.length - 1];
+        if (lastTd) {
+            const r = parseInt(lastTd.getAttribute("data-row"));
+            const c = parseInt(lastTd.getAttribute("data-col"));
+            updateChalkboard(r, c, false);
+        }
+    }
+
+    function advanceStep(steps = 1) {
+        if (animIdx >= animCells.length) {
+            finishStepAnimation();
+            return;
+        }
+
+        const dataViewport = document.getElementById("data-viewport");
+
+        for (let s = 0; s < steps && animIdx < animCells.length; s++) {
+            const td = animCells[animIdx];
+            const r = parseInt(td.getAttribute("data-row"));
+            const c = parseInt(td.getAttribute("data-col"));
+            
+            animCells.forEach(t => t.classList.remove("cell-hover"));
+            td.classList.add("cell-hover");
+            updateChalkboard(r, c, true);
+
+            // Scroll automático suave en el contenedor de datos hacia la celda en evaluación
+            if (s === steps - 1 && dataViewport) {
+                const cellTop = td.offsetTop;
+                const cellLeft = td.offsetLeft;
+                if (cellTop > dataViewport.scrollTop + dataViewport.clientHeight - 60 || cellTop < dataViewport.scrollTop) {
+                    dataViewport.scrollTop = cellTop - 100;
+                }
+                if (cellLeft > dataViewport.scrollLeft + dataViewport.clientWidth - 60 || cellLeft < dataViewport.scrollLeft) {
+                    dataViewport.scrollLeft = cellLeft - 100;
+                }
+            }
+
+            animIdx++;
+        }
+
+        if (playerStatus) {
+            playerStatus.textContent = `Celda ${animIdx} de ${animCells.length}`;
+        }
+
+        if (animIdx >= animCells.length) {
+            finishStepAnimation();
+        }
+    }
+
+    if (btnPlay) {
+        btnPlay.addEventListener("click", () => {
+            if (sim.isPlaying) {
+                stopStepAnimation();
+                if (playerStatus) playerStatus.textContent = `⏸️ Pausado (en celda ${animIdx})`;
+            } else {
+                if (heatmapCanvas && !heatmapCanvas.classList.contains("hidden")) {
+                    if (viewModeSelect) viewModeSelect.value = "micro";
+                    renderMatrixOrHeatmap();
+                }
+                
+                animCells = Array.from(matrixContainer.querySelectorAll("td"));
+                animIdx = 0;
+                animCells.forEach(td => td.classList.remove("cell-optimal", "cell-hover"));
+                
+                sim.isPlaying = true;
+                btnPlay.innerHTML = `<i class="icon">⏸️</i> Pausar Animación`;
+                if (viewModeSelect) viewModeSelect.disabled = true;
+                if (playerControls) playerControls.classList.remove("hidden");
+                
+                const speedVal = animSpeedSelect ? animSpeedSelect.value : "80";
+                if (speedVal === "manual") {
+                    if (playerStatus) playerStatus.textContent = "⏸️ Modo Manual (usa botones de paso)";
+                    advanceStep(1);
+                } else {
+                    if (playerStatus) playerStatus.textContent = "▶️ Reproduciendo...";
+                    sim.animTimer = setInterval(() => advanceStep(1), parseInt(speedVal));
+                }
+            }
+        });
+    }
+
+    if (btnStepNext) {
+        btnStepNext.addEventListener("click", () => {
+            if (sim.animTimer) clearInterval(sim.animTimer);
+            if (btnPlay) btnPlay.innerHTML = `<i class="icon">▶️</i> Continuar Auto`;
+            sim.isPlaying = false;
+            advanceStep(1);
+        });
+    }
+
+    if (btnStepRow) {
+        btnStepRow.addEventListener("click", () => {
+            if (sim.animTimer) clearInterval(sim.animTimer);
+            if (btnPlay) btnPlay.innerHTML = `<i class="icon">▶️</i> Continuar Auto`;
+            sim.isPlaying = false;
+            const cols = sim.scoreMatrix[0].length;
+            advanceStep(cols);
+        });
+    }
+
+    if (animSpeedSelect) {
+        animSpeedSelect.addEventListener("change", () => {
+            if (sim.isPlaying && sim.animTimer) {
+                clearInterval(sim.animTimer);
+                const speedVal = animSpeedSelect.value;
+                if (speedVal === "manual") {
+                    sim.isPlaying = false;
+                    if (btnPlay) btnPlay.innerHTML = `<i class="icon">▶️</i> Continuar Auto`;
+                    if (playerStatus) playerStatus.textContent = "⏸️ Modo Manual";
+                } else {
+                    sim.animTimer = setInterval(() => advanceStep(1), parseInt(speedVal));
+                    if (playerStatus) playerStatus.textContent = "▶️ Reproduciendo...";
+                }
+            }
+        });
+    }
+
+    // --- 9. MODO DESAFÍO (GAMIFICACIÓN) ---
+    if (btnChallenge) {
+        btnChallenge.addEventListener("click", () => {
+            const cells = matrixContainer.querySelectorAll("td");
+            cells.forEach(td => td.classList.remove("cell-optimal", "cell-hover"));
+            alert("🎯 ¡MODO DESAFÍO ACTIVADO!\n\nEl camino óptimo ha sido ocultado. Haz clic en las celdas desde la esquina inferior derecha hacia arriba a la izquierda para descubrir el camino del Traceback.");
+            
+            cells.forEach(td => {
+                td.addEventListener("click", function challengeClick() {
+                    const r = parseInt(this.getAttribute("data-row"));
+                    const c = parseInt(this.getAttribute("data-col"));
+                    if (sim.isInOptimalPath(r, c)) {
+                        this.classList.add("cell-optimal");
+                        this.style.transform = "scale(1.1)";
+                    } else {
+                        this.style.backgroundColor = "rgba(255, 0, 84, 0.4)";
+                        alert("❌ ¡Esa celda no es parte del camino máximo! Recuerda que el Traceback retrocede por la dirección que produjo el valor máximo.");
+                    }
+                });
+            });
+        });
+    }
+
+    runSimulation();
+});
