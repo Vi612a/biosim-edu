@@ -1,13 +1,15 @@
 /**
- * app.js - Controlador Principal de la Interfaz y Módulos de BioSim Edu
+ * app.js - Controlador Principal de la Interfaz y Módulos de Víctor Simulador
  * Gestiona navegación, presets, visualización responsiva, Pizarra Didáctica de altura constante blindada (310px),
- * reproductor paso a paso con controles manuales (+1 celda / +1 fila / velocidad) y nueva arquitectura de matriz
- * donde los aminoácidos están en contenedores físicos separados (sin position:sticky en tablas).
+ * reproductor paso a paso con cálculo en tiempo real (celdas ocultas revelándose), inspección por CLIC (no hover),
+ * y Modo Desafío Traceback secuencial con soporte de empates.
  */
 
 document.addEventListener("DOMContentLoaded", () => {
     // Inicializar el motor de alineamiento Needleman-Wunsch
     const sim = new AlignmentSimulator();
+    sim.inChallengeMode = false;
+    sim.challengeCurrent = null;
     
     // Referencias DOM - Navegación
     const navButtons = document.querySelectorAll(".nav-tab");
@@ -104,31 +106,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
         presetSelect.addEventListener("change", (e) => {
             loadPreset(e.target.value);
-            runSimulation();
+            clearAndHideResults(); // No auto-calcular, obligar a pulsar Calcular Alineamiento
         });
 
         loadPreset("short_dna");
     }
 
-    // --- 3. ACTUALIZACIÓN DE SLIDERS ---
+    // --- 3. ACTUALIZACIÓN DE SLIDERS Y LIMPIEZA AUTOMÁTICA ---
     function updateSliderDisplays() {
         if (matchValDisplay) matchValDisplay.textContent = `+${matchInput.value}`;
         if (mismatchValDisplay) mismatchValDisplay.textContent = mismatchInput.value;
         if (gapValDisplay) gapValDisplay.textContent = gapInput.value;
     }
 
+    function clearAndHideResults() {
+        stopStepAnimation();
+        sim.inChallengeMode = false;
+        sim.challengeCurrent = null;
+        if (btnChallenge) {
+            btnChallenge.innerHTML = "🎯 Modo Desafío Traceback";
+            btnChallenge.style.background = "";
+        }
+        if (resultsArea) resultsArea.classList.add("hidden");
+        if (playerControls) playerControls.classList.add("hidden");
+    }
+
     [matchInput, mismatchInput, gapInput].forEach(slider => {
         if (slider) {
             slider.addEventListener("input", () => {
                 updateSliderDisplays();
-                runSimulation();
+                clearAndHideResults(); // Oculta resultados al mover sliders
             });
         }
     });
 
     if (viewModeSelect) {
         viewModeSelect.addEventListener("change", () => {
-            if (!sim.isPlaying) {
+            if (!sim.isPlaying && !resultsArea.classList.contains("hidden")) {
                 renderMatrixOrHeatmap();
             }
         });
@@ -137,11 +151,24 @@ document.addEventListener("DOMContentLoaded", () => {
     // --- 4. EJECUCIÓN DEL ALGORITMO ---
     function runSimulation() {
         stopStepAnimation();
+        sim.inChallengeMode = false;
+        sim.challengeCurrent = null;
+        if (btnChallenge) {
+            btnChallenge.innerHTML = "🎯 Modo Desafío Traceback";
+            btnChallenge.style.background = "";
+        }
         if (playerControls) playerControls.classList.add("hidden");
 
-        const s1 = cleanFasta(seq1Input.value) || "A";
-        const s2 = cleanFasta(seq2Input.value) || "A";
+        const s1 = cleanFasta(seq1Input.value);
+        const s2 = cleanFasta(seq2Input.value);
         
+        // VALIDACIÓN DE FASTA VACÍA (Sin letras "A" por defecto)
+        if (!s1 || !s2 || s1.length === 0 || s2.length === 0) {
+            alert("⚠️ ¡Atención! Por favor ingresa al menos un símbolo o aminoácido válido en ambas cajas de texto (Secuencia 1 y Secuencia 2) antes de calcular el alineamiento.");
+            if (resultsArea) resultsArea.classList.add("hidden");
+            return;
+        }
+
         sim.compute(
             s1, 
             s2, 
@@ -162,7 +189,7 @@ document.addEventListener("DOMContentLoaded", () => {
     [seq1Input, seq2Input].forEach(input => {
         if (input) {
             input.addEventListener("input", () => {
-                if (!input.readOnly) runSimulation();
+                if (!input.readOnly) clearAndHideResults(); // Oculta resultados si escriben nueva secuencia
             });
         }
     });
@@ -298,7 +325,6 @@ document.addEventListener("DOMContentLoaded", () => {
      * ARQUITECTURA DE MATRIZ SEPARADA:
      * Separa físicamente los aminoácidos en contenedores externos (Top y Left Viewports)
      * sincronizados con el scroll de la tabla numérica interna (Data Viewport).
-     * ¡Esto elimina al 100% bugs de transparencia, superposición y recortes de CSS Grid/Table Sticky!
      */
     function drawInteractiveTable() {
         if (!matrixContainer) return;
@@ -323,7 +349,7 @@ document.addEventListener("DOMContentLoaded", () => {
             dataTableHtml += `<tr>`;
             for (let j = 0; j < cols; j++) {
                 const val = sim.scoreMatrix[i][j];
-                const isOptimal = sim.isInOptimalPath(i, j);
+                const isOptimal = (!sim.inChallengeMode && sim.isInOptimalPath(i, j)) || (sim.inChallengeMode && sim.challengeCurrent && sim.challengeCurrent[0] === i && sim.challengeCurrent[1] === j);
                 const cellClass = isOptimal ? 'cell-optimal' : '';
                 dataTableHtml += `<td class="${cellClass}" data-row="${i}" data-col="${j}">
                                     <span class="val">${val}</span>
@@ -367,16 +393,68 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
 
-        // 6. Agregar eventos de inspección a las celdas numéricas
+        // 6. Agregar eventos de inspección (POR CLIC) y gamificación a las celdas numéricas
         const cells = matrixContainer.querySelectorAll("td");
         cells.forEach(cell => {
+            // Mouseenter solo para efecto hover visual leve, SIN sobreescribir la Pizarra
             cell.addEventListener("mouseenter", () => {
-                if (!sim.isPlaying) {
-                    const r = parseInt(cell.getAttribute("data-row"));
-                    const c = parseInt(cell.getAttribute("data-col"));
+                cells.forEach(td => td.classList.remove("cell-hover"));
+                cell.classList.add("cell-hover");
+            });
+
+            // INSPECCIÓN Y MODO DESAFÍO POR CLIC DIRECTO
+            cell.addEventListener("click", () => {
+                const r = parseInt(cell.getAttribute("data-row"));
+                const c = parseInt(cell.getAttribute("data-col"));
+
+                // Si NO está en modo desafío, el clic inspecciona y fija la celda en la Pizarra
+                if (!sim.inChallengeMode) {
+                    cells.forEach(td => td.classList.remove("cell-selected"));
+                    cell.classList.add("cell-selected");
                     updateChalkboard(r, c, false);
-                    cells.forEach(td => td.classList.remove("cell-hover"));
-                    cell.classList.add("cell-hover");
+                    return;
+                }
+
+                // SI ESTÁ EN MODO DESAFÍO: LÓGICA SECUENCIAL REAL
+                if (sim.inChallengeMode && sim.challengeCurrent) {
+                    const [currR, currC] = sim.challengeCurrent;
+                    
+                    if (r === currR && c === currC) return; // Clic en la misma celda donde ya está
+
+                    const validDirs = sim.dirMatrix[currR][currC] || [];
+                    let isValid = false;
+
+                    // Validar si la celda clickeada corresponde exactamente a una de las direcciones óptimas
+                    if (validDirs.includes('D') && r === currR - 1 && c === currC - 1) isValid = true;
+                    if (validDirs.includes('U') && r === currR - 1 && c === currC) isValid = true;
+                    if (validDirs.includes('L') && r === currR && c === currC - 1) isValid = true;
+
+                    if (isValid) {
+                        cell.classList.add("cell-optimal");
+                        sim.challengeCurrent = [r, c];
+                        updateChalkboard(r, c, true); // Ocultar cartel óptimo en la pizarra para evitar spoilers
+                        
+                        // ¿Llegó a la celda origen o completó el camino?
+                        if ((r === 0 && c === 0) || !sim.dirMatrix[r][c] || sim.dirMatrix[r][c].length === 0 || sim.dirMatrix[r][c][0] === 'Z') {
+                            setTimeout(() => {
+                                alert("🏆 ¡FELICIDADES! Has completado el Traceback con total precisión y sin errores. ¡Has demostrado dominar el algoritmo Needleman-Wunsch!");
+                                sim.inChallengeMode = false;
+                                if (btnChallenge) {
+                                    btnChallenge.innerHTML = "🎯 Modo Desafío Traceback";
+                                    btnChallenge.style.background = "";
+                                }
+                                drawInteractiveTable();
+                            }, 100);
+                        }
+                    } else {
+                        // Efecto visual de error
+                        const origBg = cell.style.backgroundColor;
+                        cell.style.backgroundColor = "rgba(255, 0, 84, 0.6)";
+                        setTimeout(() => { cell.style.backgroundColor = origBg; }, 600);
+                        
+                        let dirNames = validDirs.map(d => d === 'D' ? 'Diagonal ↖️' : (d === 'U' ? 'Arriba ⬆️' : 'Izquierda ⬅️')).join(" o ");
+                        alert(`❌ ¡Paso incorrecto en el Traceback!\n\nDesde la celda actual (${currR}, ${currC}), el puntaje máximo provino de la dirección: [ ${dirNames} ].\n\nDebes hacer clic en la celda adyacente correspondiente para continuar retrocediendo.`);
+                    }
                 }
             });
         });
@@ -444,7 +522,7 @@ document.addEventListener("DOMContentLoaded", () => {
         chalkboardContent.innerHTML = html;
     }
 
-    // --- 8. REPRODUCTOR PASO A PASO DIDÁCTICO (MANUAL + VELOCIDAD) ---
+    // --- 8. REPRODUCTOR PASO A PASO DIDÁCTICO (MANUAL + VELOCIDAD + VACIADO REAL) ---
     let animCells = [];
     let animIdx = 0;
 
@@ -463,6 +541,10 @@ document.addEventListener("DOMContentLoaded", () => {
         animCells.forEach(td => {
             const r = parseInt(td.getAttribute("data-row"));
             const c = parseInt(td.getAttribute("data-col"));
+            const valSpan = td.querySelector(".val");
+            if (valSpan && sim.scoreMatrix[r] && sim.scoreMatrix[r][c] !== undefined) {
+                valSpan.textContent = sim.scoreMatrix[r][c];
+            }
             if (sim.isInOptimalPath(r, c)) td.classList.add("cell-optimal");
         });
         
@@ -487,11 +569,17 @@ document.addEventListener("DOMContentLoaded", () => {
             const r = parseInt(td.getAttribute("data-row"));
             const c = parseInt(td.getAttribute("data-col"));
             
-            animCells.forEach(t => t.classList.remove("cell-hover"));
-            td.classList.add("cell-hover");
+            // REVELAR EL VALOR REAL DE LA CELDA EN TIEMPO REAL
+            const valSpan = td.querySelector(".val");
+            if (valSpan && sim.scoreMatrix[r] && sim.scoreMatrix[r][c] !== undefined) {
+                valSpan.textContent = sim.scoreMatrix[r][c];
+            }
+
+            animCells.forEach(t => t.classList.remove("cell-hover", "cell-selected"));
+            td.classList.add("cell-selected");
             updateChalkboard(r, c, true);
 
-            // Scroll automático suave en el contenedor de datos hacia la celda en evaluación
+            // Scroll automático suave hacia la celda en evaluación
             if (s === steps - 1 && dataViewport) {
                 const cellTop = td.offsetTop;
                 const cellLeft = td.offsetLeft;
@@ -507,7 +595,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         if (playerStatus) {
-            playerStatus.textContent = `Celda ${animIdx} de ${animCells.length}`;
+            playerStatus.textContent = `Celda ${animIdx} de ${animCells.length} calculada`;
         }
 
         if (animIdx >= animCells.length) {
@@ -517,6 +605,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (btnPlay) {
         btnPlay.addEventListener("click", () => {
+            // Si el panel de resultados está oculto o no se ha calculado, ejecutar cálculo primero
+            if (resultsArea && resultsArea.classList.contains("hidden")) {
+                runSimulation();
+                // Si la validación de FASTA falló, resultsArea seguirá oculto
+                if (resultsArea.classList.contains("hidden")) return;
+            }
+
             if (sim.isPlaying) {
                 stopStepAnimation();
                 if (playerStatus) playerStatus.textContent = `⏸️ Pausado (en celda ${animIdx})`;
@@ -528,19 +623,26 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 animCells = Array.from(matrixContainer.querySelectorAll("td"));
                 animIdx = 0;
-                animCells.forEach(td => td.classList.remove("cell-optimal", "cell-hover"));
+                
+                // VACIAR LA MATRIZ PARA SIMULAR EL CÁLCULO EN TIEMPO REAL DESDE CERO
+                animCells.forEach(td => {
+                    td.classList.remove("cell-optimal", "cell-hover", "cell-selected");
+                    const valSpan = td.querySelector(".val");
+                    if (valSpan) valSpan.textContent = "?";
+                });
                 
                 sim.isPlaying = true;
                 btnPlay.innerHTML = `<i class="icon">⏸️</i> Pausar Animación`;
                 if (viewModeSelect) viewModeSelect.disabled = true;
                 if (playerControls) playerControls.classList.remove("hidden");
                 
-                const speedVal = animSpeedSelect ? animSpeedSelect.value : "80";
+                const speedVal = animSpeedSelect ? animSpeedSelect.value : "manual";
                 if (speedVal === "manual") {
-                    if (playerStatus) playerStatus.textContent = "⏸️ Modo Manual (usa botones de paso)";
+                    sim.isPlaying = false; // Pausado en modo manual
+                    if (playerStatus) playerStatus.textContent = "⏸️ Modo Manual (usa botones de paso para revelar)";
                     advanceStep(1);
                 } else {
-                    if (playerStatus) playerStatus.textContent = "▶️ Reproduciendo...";
+                    if (playerStatus) playerStatus.textContent = "▶️ Calculando matriz en tiempo real...";
                     sim.animTimer = setInterval(() => advanceStep(1), parseInt(speedVal));
                 }
             }
@@ -552,6 +654,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (sim.animTimer) clearInterval(sim.animTimer);
             if (btnPlay) btnPlay.innerHTML = `<i class="icon">▶️</i> Continuar Auto`;
             sim.isPlaying = false;
+            if (animSpeedSelect) animSpeedSelect.value = "manual";
             advanceStep(1);
         });
     }
@@ -561,6 +664,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (sim.animTimer) clearInterval(sim.animTimer);
             if (btnPlay) btnPlay.innerHTML = `<i class="icon">▶️</i> Continuar Auto`;
             sim.isPlaying = false;
+            if (animSpeedSelect) animSpeedSelect.value = "manual";
             const cols = sim.scoreMatrix[0].length;
             advanceStep(cols);
         });
@@ -568,43 +672,52 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (animSpeedSelect) {
         animSpeedSelect.addEventListener("change", () => {
-            if (sim.isPlaying && sim.animTimer) {
-                clearInterval(sim.animTimer);
+            if (playerControls && !playerControls.classList.contains("hidden") && animIdx < animCells.length) {
+                if (sim.animTimer) clearInterval(sim.animTimer);
                 const speedVal = animSpeedSelect.value;
                 if (speedVal === "manual") {
                     sim.isPlaying = false;
                     if (btnPlay) btnPlay.innerHTML = `<i class="icon">▶️</i> Continuar Auto`;
                     if (playerStatus) playerStatus.textContent = "⏸️ Modo Manual";
                 } else {
+                    sim.isPlaying = true;
+                    if (btnPlay) btnPlay.innerHTML = `<i class="icon">⏸️</i> Pausar Animación`;
+                    if (playerStatus) playerStatus.textContent = "▶️ Calculando matriz en tiempo real...";
                     sim.animTimer = setInterval(() => advanceStep(1), parseInt(speedVal));
-                    if (playerStatus) playerStatus.textContent = "▶️ Reproduciendo...";
                 }
             }
         });
     }
 
-    // --- 9. MODO DESAFÍO (GAMIFICACIÓN) ---
+    // --- 9. MODO DESAFÍO REAL GAMIFICADO ---
     if (btnChallenge) {
         btnChallenge.addEventListener("click", () => {
-            const cells = matrixContainer.querySelectorAll("td");
-            cells.forEach(td => td.classList.remove("cell-optimal", "cell-hover"));
-            alert("🎯 ¡MODO DESAFÍO ACTIVADO!\n\nEl camino óptimo ha sido ocultado. Haz clic en las celdas desde la esquina inferior derecha hacia arriba a la izquierda para descubrir el camino del Traceback.");
-            
-            cells.forEach(td => {
-                td.addEventListener("click", function challengeClick() {
-                    const r = parseInt(this.getAttribute("data-row"));
-                    const c = parseInt(this.getAttribute("data-col"));
-                    if (sim.isInOptimalPath(r, c)) {
-                        this.classList.add("cell-optimal");
-                        this.style.transform = "scale(1.1)";
-                    } else {
-                        this.style.backgroundColor = "rgba(255, 0, 84, 0.4)";
-                        alert("❌ ¡Esa celda no es parte del camino máximo! Recuerda que el Traceback retrocede por la dirección que produjo el valor máximo.");
-                    }
-                });
-            });
+            if (sim.inChallengeMode) {
+                // Cancelar desafío
+                sim.inChallengeMode = false;
+                btnChallenge.innerHTML = "🎯 Modo Desafío Traceback";
+                btnChallenge.style.background = "";
+                runSimulation();
+            } else {
+                // Activar desafío
+                sim.inChallengeMode = true;
+                stopStepAnimation();
+                if (playerControls) playerControls.classList.add("hidden");
+                
+                btnChallenge.innerHTML = "❌ Salir del Desafío";
+                btnChallenge.style.background = "#ff0054";
+                
+                const rows = sim.scoreMatrix.length;
+                const cols = sim.scoreMatrix[0].length;
+                sim.challengeCurrent = [rows - 1, cols - 1];
+                
+                drawInteractiveTable();
+                
+                alert("🎯 ¡MODO DESAFÍO ACTIVADO!\n\n1. El camino óptimo ha sido ocultado y la Pizarra Didáctica no te dará spoilers.\n2. Tu punto de partida es la celda inferior derecha (" + (rows-1) + ", " + (cols-1) + ") que está iluminada en azul.\n3. Haz clic en la celda adyacente correcta hacia atrás siguiendo la dirección del valor máximo hasta llegar a la esquina superior izquierda (0,0).\n\n💡 Nota de bioinformática: Si una celda tuvo empates en el cálculo, ¡cualquiera de los caminos ganadores será validado como correcto!");
+            }
         });
     }
 
-    runSimulation();
+    // AL CARGAR LA PÁGINA: NO AUTO-CALCULAR, DEJAR RESULTADOS OCULTOS HASTA QUE PULSEN EL BOTÓN
+    if (resultsArea) resultsArea.classList.add("hidden");
 });

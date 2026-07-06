@@ -527,7 +527,7 @@ input[type=range] {
 .sym-mismatch { color: #ffbe0b; font-size: 1.1rem; }
 
 /* ========================================================================== */
-/* NUEVA ARQUITECTURA DE MATRIZ SEPARADA (Sin position:sticky en tablas)   */
+/* ARQUITECTURA DE MATRIZ SEPARADA (Sin position:sticky en tablas)         */
 /* Los aminoácidos están en contenedores físicos separados y sincronizados  */
 /* ========================================================================== */
 
@@ -657,6 +657,15 @@ input[type=range] {
     z-index: 2;
     position: relative;
     box-shadow: 0 0 12px rgba(0, 255, 204, 0.9);
+}
+
+.score-data-table td.cell-selected {
+    background: rgba(0, 255, 204, 0.45) !important;
+    border: 2px solid var(--accent-cyan) !important;
+    box-shadow: 0 0 15px var(--accent-cyan);
+    z-index: 5;
+    position: relative;
+    transform: scale(1.08);
 }
 
 .cell-optimal {
