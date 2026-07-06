@@ -883,3 +883,56 @@ input[type=range] {
     border: 2px solid var(--accent-cyan) !important;
     background: rgba(0, 255, 204, 0.2) !important;
 }
+
+/* --- MÓDULO 3: MODELADO 3D Y REPORTE BIOFÍSICO --- */
+.bio-report-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+}
+
+.bio-stat-card {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.8rem;
+    text-align: center;
+}
+
+.bio-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.3rem;
+}
+
+.bio-stat-val {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.challenge-opt-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.8rem;
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.challenge-opt-btn:hover {
+    background: rgba(0, 255, 204, 0.15);
+    border-color: var(--accent-cyan);
+    transform: translateY(-2px);
+}

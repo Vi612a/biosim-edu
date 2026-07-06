@@ -282,13 +282,199 @@
         <!-- MÓDULO 3: MODELADO ESTRUCTURAL 3D          -->
         <!-- ========================================== -->
         <section id="mod-structure" class="tab-content">
-            <div class="placeholder-card">
-                <span class="placeholder-icon">⚛️</span>
-                <h2>Módulo de Modelado Estructural Tridimensional</h2>
-                <p>Integración con la librería molecular <strong>3Dmol.js</strong> para visualizar estructuras de proteínas en tiempo real y simular el efecto de mutaciones puntuales (como en el caso de la hemoglobina falciforme HbS en el espacio 3D).</p>
-                <div style="margin-top: 1.5rem; display: inline-block; background: rgba(58, 134, 255, 0.1); border: 1px solid var(--accent-blue); padding: 0.6rem 1.2rem; border-radius: 50px; font-size: 0.85rem; color: var(--accent-blue);">
-                    🚧 Estructura planeada - Próximo módulo a integrar
-                </div>
+            <div class="workspace-grid">
+                <!-- COLUMNA IZQUIERDA: CONTROLES DE ESTRUCTURA Y MUTACIONES -->
+                <aside class="controls-sidebar">
+                    <!-- TARJETA 1: SELECCIÓN DE ESTRUCTURA PDB -->
+                    <div class="panel-card">
+                        <h3 class="panel-title"><i class="icon">⚛️</i> Estructuras PDB y Casos</h3>
+                        <div class="form-group">
+                            <label class="form-label">Proteína de Estudio (Presets PDB):</label>
+                            <select id="struct-preset-select" class="form-select">
+                                <option value="hemoglobin" selected>🩸 Hemoglobina β (Falciforme E6V)</option>
+                                <option value="gfp">🌟 Proteína Verde Fluorescente (GFP)</option>
+                                <option value="p53">🛡️ Proteína p53 (Guardián del Genoma)</option>
+                                <option value="insulin">💉 Insulina Humana (Hormona)</option>
+                                <option value="custom">🔍 Ingresar Código PDB ID personalizado...</option>
+                            </select>
+                        </div>
+
+                        <div id="struct-custom-box" class="form-group hidden">
+                            <label class="form-label">Código PDB (4 caracteres, ej. 1TUP):</label>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="text" id="struct-pdb-id" class="form-input" placeholder="ej. 1TUP, 1GFL, 4INS..." maxlength="4" style="text-transform: uppercase;">
+                                <button id="btn-struct-fetch" class="btn btn-secondary" style="padding: 0.5rem 1rem;">📥 Descargar</button>
+                            </div>
+                        </div>
+
+                        <div id="struct-desc-box" class="notice-box" style="background: rgba(0, 255, 204, 0.08); border-color: var(--accent-cyan); color: var(--text-primary); font-size: 0.82rem; margin-bottom: 1rem;">
+                            <strong>🩸 Hemoglobina β:</strong> La hemoglobina transporta oxígeno. La mutación E6V causa Anemia Falciforme al formar parches hidrofóbicos.
+                        </div>
+
+                        <button id="btn-struct-load" class="btn btn-primary" style="width: 100%;">⚡ Cargar y Renderizar 3D</button>
+                    </div>
+
+                    <!-- TARJETA 2: SIMULAR MUTACIONES PUNTUALES -->
+                    <div class="panel-card">
+                        <h3 class="panel-title" style="color: var(--accent-green);"><i class="icon">🧪</i> Mutación Puntual en Vivo</h3>
+                        <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                            Selecciona una posición de residuo para reemplazar su aminoácido original por uno mutado y calcular el impacto biofísico.
+                        </p>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
+                            <div class="form-group">
+                                <label class="form-label">Residuo # (Posición):</label>
+                                <input type="number" id="struct-resi-num" class="form-input" value="6" min="1" max="1000">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Cadena:</label>
+                                <select id="struct-chain-select" class="form-select">
+                                    <option value="A" selected>Cadena A</option>
+                                    <option value="B">Cadena B</option>
+                                    <option value="ALL">Todas las cadenas</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem;">
+                            <div class="form-group">
+                                <label class="form-label">Original:</label>
+                                <select id="struct-orig-amino" class="form-select">
+                                    <option value="GLU" selected>GLU (Glutamato -1)</option>
+                                    <option value="ALA">ALA (Alanina)</option>
+                                    <option value="ARG">ARG (Arginina +1)</option>
+                                    <option value="ASP">ASP (Aspártico -1)</option>
+                                    <option value="CYS">CYS (Cisteína)</option>
+                                    <option value="GLY">GLY (Glicina)</option>
+                                    <option value="HIS">HIS (Histidina +1)</option>
+                                    <option value="ILE">ILE (Isoleucina)</option>
+                                    <option value="LEU">LEU (Leucina)</option>
+                                    <option value="LYS">LYS (Lisina +1)</option>
+                                    <option value="MET">MET (Metionina)</option>
+                                    <option value="PHE">PHE (Fenilalanina)</option>
+                                    <option value="PRO">PRO (Prolina)</option>
+                                    <option value="SER">SER (Serina)</option>
+                                    <option value="THR">THR (Treonina)</option>
+                                    <option value="TRP">TRP (Triptófano)</option>
+                                    <option value="TYR">TYR (Tirosina)</option>
+                                    <option value="VAL">VAL (Valina)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Mutar a (Nuevo):</label>
+                                <select id="struct-mut-amino" class="form-select">
+                                    <option value="VAL" selected>VAL (Valina - apolar)</option>
+                                    <option value="ALA">ALA (Alanina)</option>
+                                    <option value="ARG">ARG (Arginina +1)</option>
+                                    <option value="ASP">ASP (Aspártico -1)</option>
+                                    <option value="CYS">CYS (Cisteína)</option>
+                                    <option value="GLU">GLU (Glutamato -1)</option>
+                                    <option value="GLY">GLY (Glicina)</option>
+                                    <option value="HIS">HIS (Histidina +1)</option>
+                                    <option value="ILE">ILE (Isoleucina)</option>
+                                    <option value="LEU">LEU (Leucina)</option>
+                                    <option value="LYS">LYS (Lisina +1)</option>
+                                    <option value="MET">MET (Metionina)</option>
+                                    <option value="PHE">PHE (Fenilalanina)</option>
+                                    <option value="PRO">PRO (Prolina)</option>
+                                    <option value="SER">SER (Serina)</option>
+                                    <option value="THR">THR (Treonina)</option>
+                                    <option value="TRP">TRP (Triptófano)</option>
+                                    <option value="TYR">TYR (Tirosina)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button id="btn-struct-mutate" class="btn" style="background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan)); color: #000; width: 100%; font-weight: 700; margin-bottom: 0.8rem;">🧬 Simular Mutación y Evaluar</button>
+                        
+                        <button id="btn-struct-challenge" class="btn btn-challenge" style="width: 100%; border-color: var(--accent-yellow); color: #ffffff;">🎯 Modo Desafío: Salva la Proteína</button>
+                    </div>
+
+                    <!-- TARJETA 3: CONTROLES DE ESTILO VISUAL 3DMOL -->
+                    <div class="panel-card">
+                        <h3 class="panel-title" style="color: var(--accent-yellow);"><i class="icon">🎨</i> Estilo Visual WebGL</h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem;">
+                            <div class="form-group" style="margin: 0;">
+                                <label class="form-label">Representación:</label>
+                                <select id="struct-style-select" class="form-select">
+                                    <option value="cartoon" selected>🎀 Cintas (Cartoon)</option>
+                                    <option value="stick">🥢 Enlaces (Stick)</option>
+                                    <option value="sphere">🔮 Esferas (Van der Waals)</option>
+                                    <option value="surface">☁️ Superficie Molecular</option>
+                                    <option value="cartoon_stick">🎀+🥢 Cintas + Enlaces</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label class="form-label">Coloración:</label>
+                                <select id="struct-color-select" class="form-select">
+                                    <option value="spectrum" selected>🌈 Arcoíris (Spectrum)</option>
+                                    <option value="secstruct">🧬 Estructura Secundaria</option>
+                                    <option value="chain">⛓️ Por Cadena</option>
+                                    <option value="hydrophobic">💧 Polar vs Hidrofóbico</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 0.8rem;">
+                            <button id="btn-struct-spin" class="btn btn-secondary" style="flex: 1;">🔄 Rotación 3D</button>
+                            <button id="btn-struct-reset" class="btn btn-secondary" style="flex: 1;">🎯 Centrar Vista</button>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- COLUMNA DERECHA: VISOR 3DMOL Y REPORTE BIOFÍSICO -->
+                <section class="results-display">
+                    
+                    <!-- Banner de Conexión entre Módulos -->
+                    <div id="struct-connection-banner" class="panel-card" style="padding: 1rem; background: linear-gradient(135deg, rgba(255, 0, 84, 0.15), rgba(0, 255, 204, 0.15)); border-color: var(--accent-red); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem;">
+                        <div>
+                            <h4 style="color: var(--accent-red); margin-bottom: 0.2rem; font-size: 0.95rem;">🔗 Conexión Módulos 1 &amp; 2 ➔ MÓDULO 3 ACTIVADA</h4>
+                            <p style="font-size: 0.82rem; color: var(--text-primary); margin: 0;">Las mutaciones puntuales detectadas en los alineamientos de secuencias y las divergencias evolutivas ahora cobran vida estructural en 3D.</p>
+                        </div>
+                        <button id="btn-struct-link-e6v" class="btn" style="background: var(--accent-red); color: white; font-size: 0.8rem; padding: 0.4rem 0.8rem; border-radius: 20px; font-weight: 700; white-space: nowrap;">⚡ Cargar Mutación Falciforme (E6V de Módulo 1)</button>
+                    </div>
+
+                    <!-- VISOR MOLECULAR WEBGL 3DMOL -->
+                    <div class="panel-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                            <h3 class="panel-title" style="border:none; margin:0; padding:0; color: var(--accent-cyan);">⚛️ Visor Molecular Tridimensional (3Dmol.js WebGL)</h3>
+                            <span id="struct-status-badge" style="background: rgba(0, 255, 204, 0.15); border: 1px solid var(--accent-cyan); color: var(--accent-cyan); font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.7rem; border-radius: 12px;">🟢 Listo: 1A3N (Hemoglobina)</span>
+                        </div>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.8rem;">
+                            💡 <strong style="color:var(--accent-cyan);">Tip Didáctico:</strong> Puedes hacer <strong>rotar la molécula arrastrando con el clic izquierdo</strong>, hacer <strong>zoom con la rueda del mouse</strong> o trasladarla con el clic derecho.
+                        </p>
+                        
+                        <div id="struct-3dmol-container" style="width: 100%; height: 440px; background: #070b14; border: 1px solid var(--border-color); border-radius: 12px; position: relative; overflow: hidden; box-shadow: inset 0 0 20px rgba(0,0,0,0.8);">
+                            <!-- Aquí se inyectará el canvas WebGL de 3Dmol.js -->
+                        </div>
+                    </div>
+
+                    <!-- PANEL DEL MODO DESAFÍO GAMIFICADO (Oculto inicialmente) -->
+                    <div id="struct-challenge-panel" class="panel-card hidden" style="border: 2px solid var(--accent-yellow); background: linear-gradient(135deg, rgba(255, 190, 11, 0.08), rgba(255, 0, 84, 0.08));">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem; border-bottom: 1px solid rgba(255, 190, 11, 0.3); padding-bottom: 0.5rem;">
+                            <h3 style="color: var(--accent-yellow); font-size: 1.1rem; margin: 0; display: flex; align-items: center; gap: 0.5rem;">🎯 CASO CLÍNICO DESAFÍO: Enzima Mutada Inestable</h3>
+                            <span style="background: var(--accent-red); color: white; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 4px;">🚨 EMERGENCIA MOLECULAR</span>
+                        </div>
+                        <p id="struct-challenge-desc" style="font-size: 0.9rem; color: var(--text-primary); line-height: 1.5; margin-bottom: 1rem;">
+                            Una enzima clave del paciente presenta pérdida de plegamiento debido a una repulsión electrostática severa en el bolsillo activo (Residuo #16: Arginina +1). ¿Qué aminoácido solucionará el problema?
+                        </p>
+                        <div id="struct-challenge-options" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem;">
+                            <!-- Botones de opción inyectados por app.js -->
+                        </div>
+                        <div id="struct-challenge-feedback" class="hidden notice-box" style="margin-top: 1rem; margin-bottom: 0;"></div>
+                    </div>
+
+                    <!-- TARJETA DE REPORTE BIOFÍSICO Y CLÍNICO -->
+                    <div id="struct-report-card" class="panel-card">
+                        <h3 class="panel-title" style="color: var(--accent-green);">📊 Reporte de Impacto Biofísico y Estructural de Mutación</h3>
+                        <div id="struct-report-content">
+                            <div style="padding: 1.5rem; text-align: center; color: var(--text-secondary); font-size: 0.9rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                                ℹ️ Selecciona una posición y un nuevo aminoácido en el panel izquierdo y presiona <strong>"🧬 Simular Mutación y Evaluar"</strong> para generar un diagnóstico biofísico de la proteína.
+                            </div>
+                        </div>
+                    </div>
+
+                </section>
             </div>
         </section>
 
@@ -337,9 +523,12 @@
     </footer>
 
     <!-- SCRIPTS -->
+    <script src="https://3dmol.org/build/3Dmol-min.js"></script>
     <script src="js/presets.js"></script>
+    <script src="js/pdb_data.js"></script>
     <script src="js/alignment.js"></script>
     <script src="js/phylogeny.js"></script>
+    <script src="js/structure.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

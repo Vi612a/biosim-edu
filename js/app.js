@@ -59,6 +59,9 @@ document.addEventListener("DOMContentLoaded", () => {
             const targetSection = document.getElementById(targetId);
             if (targetSection) {
                 targetSection.classList.add("active");
+                if (targetId === "mod-structure" && typeof initStructureModule === "function") {
+                    initStructureModule();
+                }
             }
         });
     });
@@ -1247,6 +1250,335 @@ document.addEventListener("DOMContentLoaded", () => {
                 alert("🎯 ¡MODO DESAFÍO FILOGENÉTICO ACTIVADO!\n\n1. El resaltado verde automático de la mínima distancia ha sido ocultado.\n2. Examina los valores de la Matriz de Distancia actual en el Paso 0.\n3. Haz clic en la celda que contenga la distancia MÍNIMA entre dos especies diferentes para predecir quiénes se agruparán primero en la evolución.");
             }
         });
+    }
+
+    // =====================================================================
+    // MÓDULO 3: MODELADO ESTRUCTURAL TRIDIMENSIONAL (3DMOL.JS)
+    // =====================================================================
+    let structInitialized = false;
+
+    function initStructureModule() {
+        if (structInitialized) return;
+        if (!window.phyloStructureSim) return;
+        
+        const success = window.phyloStructureSim.initViewer("struct-3dmol-container");
+        if (!success) return;
+        structInitialized = true;
+
+        const presetSelect = document.getElementById("struct-preset-select");
+        const customBox = document.getElementById("struct-custom-box");
+        const pdbIdInput = document.getElementById("struct-pdb-id");
+        const btnFetch = document.getElementById("btn-struct-fetch");
+        const descBox = document.getElementById("struct-desc-box");
+        const btnLoad = document.getElementById("btn-struct-load");
+        const statusBadge = document.getElementById("struct-status-badge");
+        
+        const resiNumInput = document.getElementById("struct-resi-num");
+        const chainSelect = document.getElementById("struct-chain-select");
+        const origAminoSelect = document.getElementById("struct-orig-amino");
+        const mutAminoSelect = document.getElementById("struct-mut-amino");
+        const btnMutate = document.getElementById("btn-struct-mutate");
+        const btnChallenge = document.getElementById("btn-struct-challenge");
+        
+        const styleSelect = document.getElementById("struct-style-select");
+        const colorSelect = document.getElementById("struct-color-select");
+        const btnSpin = document.getElementById("btn-struct-spin");
+        const btnReset = document.getElementById("btn-struct-reset");
+        const btnLinkE6V = document.getElementById("btn-struct-link-e6v");
+        
+        const reportContent = document.getElementById("struct-report-content");
+        const challengePanel = document.getElementById("struct-challenge-panel");
+        const challengeDesc = document.getElementById("struct-challenge-desc");
+        const challengeOptions = document.getElementById("struct-challenge-options");
+        const challengeFeedback = document.getElementById("struct-challenge-feedback");
+
+        function renderBiophysicalReport(report) {
+            if (!reportContent) return;
+            const { orig, mut, resiNum, severity, impactDetail } = report;
+            
+            reportContent.innerHTML = `
+                <div class="bio-report-grid">
+                    <div class="bio-stat-card">
+                        <div class="bio-stat-label">Residuo Modificado</div>
+                        <div class="bio-stat-val" style="color: var(--accent-yellow);">Posición #${resiNum} (${orig.name} ➔ ${mut.name})</div>
+                    </div>
+                    <div class="bio-stat-card">
+                        <div class="bio-stat-label">Cambio de Carga</div>
+                        <div class="bio-stat-val">${orig.charge} ➔ ${mut.charge}</div>
+                    </div>
+                    <div class="bio-stat-card">
+                        <div class="bio-stat-label">Hidrofobicidad</div>
+                        <div class="bio-stat-val">${orig.hydro} ➔ ${mut.hydro}</div>
+                    </div>
+                    <div class="bio-stat-card">
+                        <div class="bio-stat-label">Volumen / Estérico</div>
+                        <div class="bio-stat-val">${orig.size} ➔ ${mut.size}</div>
+                    </div>
+                </div>
+                <div class="notice-box" style="background: rgba(0, 0, 0, 0.4); border-left: 4px solid var(--accent-red); margin-bottom: 0;">
+                    <div style="font-weight: 700; margin-bottom: 0.5rem; font-size: 0.95rem;">${severity}</div>
+                    <div style="color: var(--text-primary); font-size: 0.85rem; line-height: 1.5;">${impactDetail}</div>
+                </div>
+            `;
+        }
+
+        function syncResidueToPDB() {
+            if (!window.phyloStructureSim || !resiNumInput) return;
+            const resi = resiNumInput.value;
+            const chain = chainSelect ? chainSelect.value : "A";
+            
+            const info = window.phyloStructureSim.getResidueInfo(resi, chain);
+            if (info && info.resn && origAminoSelect) {
+                // 1. Sincronizar el selector "Original:" para que coincida exactamente con la realidad del PDB
+                origAminoSelect.value = info.resn;
+                origAminoSelect.disabled = true;
+                origAminoSelect.title = "🔒 Detectado en tiempo real desde el archivo molecular PDB (Ground Truth)";
+                origAminoSelect.style.opacity = "0.85";
+                origAminoSelect.style.borderColor = "var(--accent-cyan)";
+                origAminoSelect.style.background = "rgba(0, 255, 204, 0.1)";
+
+                // 2. Adecuar las opciones de "Mutar a:" para excluir el aminoácido original
+                if (mutAminoSelect) {
+                    const currentMut = mutAminoSelect.value;
+                    Array.from(mutAminoSelect.options).forEach(opt => {
+                        if (opt.value === info.resn) {
+                            opt.disabled = true;
+                            opt.textContent = `${opt.value} (Original en PDB)`;
+                            opt.style.color = "#888";
+                        } else {
+                            opt.disabled = false;
+                            if (opt.textContent.includes("(Original")) {
+                                opt.textContent = opt.value;
+                            }
+                            opt.style.color = "";
+                        }
+                    });
+                    if (currentMut === info.resn) {
+                        const alt = info.resn === "ALA" ? "VAL" : "ALA";
+                        mutAminoSelect.value = alt;
+                    }
+                }
+            } else if (origAminoSelect) {
+                origAminoSelect.disabled = false;
+                origAminoSelect.title = "⚠️ Residuo no encontrado en esta cadena. Puedes elegir manualmente.";
+                origAminoSelect.style.opacity = "1";
+                origAminoSelect.style.borderColor = "";
+                origAminoSelect.style.background = "";
+                if (mutAminoSelect) {
+                    Array.from(mutAminoSelect.options).forEach(opt => {
+                        opt.disabled = false;
+                        if (opt.textContent.includes("(Original")) opt.textContent = opt.value;
+                    });
+                }
+            }
+        }
+
+        if (resiNumInput) resiNumInput.addEventListener("input", syncResidueToPDB);
+        if (chainSelect) chainSelect.addEventListener("change", syncResidueToPDB);
+
+        function loadSelectedPreset(presetKey) {
+            if (statusBadge) statusBadge.textContent = "⌛ Cargando estructura...";
+            
+            window.phyloStructureSim.loadPreset(presetKey, 
+                (preset, mode) => {
+                    if (statusBadge) statusBadge.textContent = `🟢 Listo: ${preset.name} (${mode === "offline" ? "Respaldo Local" : "PDB Oficial"})`;
+                    if (descBox) {
+                        descBox.innerHTML = `<strong>${preset.name}:</strong> ${preset.description}<br><br><span style="color: var(--accent-yellow); font-weight: 600;">${preset.connectionNote || ""}</span>`;
+                        descBox.classList.remove("hidden");
+                    }
+                    if (preset.targetResidue && resiNumInput) resiNumInput.value = preset.targetResidue;
+                    if (preset.targetChain && chainSelect) chainSelect.value = preset.targetChain;
+                    if (preset.origAmino && origAminoSelect) origAminoSelect.value = preset.origAmino;
+                    if (preset.mutAmino && mutAminoSelect) mutAminoSelect.value = preset.mutAmino;
+                    
+                    if (reportContent) {
+                        reportContent.innerHTML = `<div style="padding: 1.5rem; text-align: center; color: var(--text-secondary); font-size: 0.9rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                            ℹ️ Estructura PDB cargada correctamente. Puedes inspeccionarla en el visor 3D o simular una mutación en el panel izquierdo.
+                        </div>`;
+                    }
+                    setTimeout(syncResidueToPDB, 350);
+                },
+                (err) => {
+                    if (statusBadge) statusBadge.textContent = "🔴 Error de carga";
+                    alert(`Error al cargar la molécula: ${err}`);
+                }
+            );
+        }
+
+        if (presetSelect) {
+            presetSelect.addEventListener("change", () => {
+                const val = presetSelect.value;
+                if (val === "custom") {
+                    if (customBox) customBox.classList.remove("hidden");
+                    if (descBox) descBox.classList.add("hidden");
+                } else {
+                    if (customBox) customBox.classList.add("hidden");
+                    loadSelectedPreset(val);
+                }
+            });
+        }
+
+        if (btnFetch) {
+            btnFetch.addEventListener("click", () => {
+                const idVal = pdbIdInput ? pdbIdInput.value.trim() : "";
+                if (!idVal || idVal.length !== 4) {
+                    alert("Por favor ingresa un código PDB ID de 4 caracteres (ej. 1TUP, 1GFL, 4INS).");
+                    return;
+                }
+                if (statusBadge) statusBadge.textContent = `⌛ Descargando PDB ${idVal.toUpperCase()}...`;
+                window.phyloStructureSim.loadFromPdbId(idVal,
+                    (info) => {
+                        if (statusBadge) statusBadge.textContent = `🟢 Listo: PDB ${idVal.toUpperCase()}`;
+                        if (descBox) {
+                            descBox.innerHTML = `<strong>Estructura personalizada (${idVal.toUpperCase()}):</strong> Descargada en tiempo real desde el Protein Data Bank (RCSB PDB).`;
+                            descBox.classList.remove("hidden");
+                        }
+                        setTimeout(syncResidueToPDB, 350);
+                    },
+                    (err) => {
+                        if (statusBadge) statusBadge.textContent = "🔴 Error";
+                        alert(err);
+                    }
+                );
+            });
+        }
+
+        if (btnLoad) {
+            btnLoad.addEventListener("click", () => {
+                const val = presetSelect ? presetSelect.value : "hemoglobin";
+                if (val === "custom") {
+                    if (btnFetch) btnFetch.click();
+                } else {
+                    loadSelectedPreset(val);
+                }
+            });
+        }
+
+        if (styleSelect || colorSelect) {
+            const updateVisual = () => {
+                const st = styleSelect ? styleSelect.value : "cartoon";
+                const co = colorSelect ? colorSelect.value : "spectrum";
+                window.phyloStructureSim.updateRepresentation(st, co);
+            };
+            if (styleSelect) styleSelect.addEventListener("change", updateVisual);
+            if (colorSelect) colorSelect.addEventListener("change", updateVisual);
+        }
+
+        if (btnSpin) {
+            btnSpin.addEventListener("click", () => {
+                const isSpin = window.phyloStructureSim.isSpinning;
+                window.phyloStructureSim.toggleSpin(!isSpin);
+                btnSpin.innerHTML = !isSpin ? "⏸️ Detener Rotación" : "🔄 Rotación 3D";
+            });
+        }
+
+        if (btnReset) {
+            btnReset.addEventListener("click", () => {
+                window.phyloStructureSim.resetView();
+            });
+        }
+
+        if (btnMutate) {
+            btnMutate.addEventListener("click", () => {
+                const resi = resiNumInput ? parseInt(resiNumInput.value) : 6;
+                const chain = chainSelect ? chainSelect.value : "A";
+                
+                // Verificar aminoácido original real del PDB (Ground Truth)
+                const info = window.phyloStructureSim.getResidueInfo(resi, chain);
+                const orig = (info && info.resn) ? info.resn : (origAminoSelect ? origAminoSelect.value : "GLU");
+                const mut = mutAminoSelect ? mutAminoSelect.value : "VAL";
+
+                const report = window.phyloStructureSim.simulateMutation(resi, chain, orig, mut);
+                renderBiophysicalReport(report);
+            });
+        }
+
+        if (btnLinkE6V) {
+            btnLinkE6V.addEventListener("click", () => {
+                if (presetSelect) presetSelect.value = "hemoglobin";
+                if (customBox) customBox.classList.add("hidden");
+                
+                if (statusBadge) statusBadge.textContent = "⌛ Cargando mutación E6V...";
+                window.phyloStructureSim.loadPreset("hemoglobin", () => {
+                    if (resiNumInput) resiNumInput.value = 6;
+                    if (chainSelect) chainSelect.value = "B";
+                    if (origAminoSelect) origAminoSelect.value = "GLU";
+                    if (mutAminoSelect) mutAminoSelect.value = "VAL";
+                    
+                    setTimeout(() => {
+                        syncResidueToPDB();
+                        if (mutAminoSelect) mutAminoSelect.value = "VAL";
+                        const report = window.phyloStructureSim.simulateMutation(6, "B", "GLU", "VAL");
+                        renderBiophysicalReport(report);
+                        alert("⚡ Conexión ejecutada: Se ha cargado la hemoglobina y aplicado en el visor 3D la mutación falciforme (E6V: Glutamato ➔ Valina) identificada en el Módulo 1.");
+                    }, 500);
+                });
+            });
+        }
+
+        // --- MODO DESAFÍO GAMIFICADO ---
+        if (btnChallenge) {
+            btnChallenge.addEventListener("click", () => {
+                if (window.phyloStructureSim.inChallengeMode) {
+                    // Salir del desafío
+                    window.phyloStructureSim.inChallengeMode = false;
+                    btnChallenge.innerHTML = "🎯 Modo Desafío: Salva la Proteína";
+                    btnChallenge.style.background = "";
+                    if (challengePanel) challengePanel.classList.add("hidden");
+                    if (presetSelect) loadSelectedPreset(presetSelect.value || "hemoglobin");
+                    return;
+                }
+
+                // Activar desafío
+                btnChallenge.innerHTML = "❌ Salir del Desafío";
+                btnChallenge.style.background = "#ff0054";
+                if (challengePanel) challengePanel.classList.remove("hidden");
+                if (challengeFeedback) challengeFeedback.classList.add("hidden");
+
+                window.phyloStructureSim.loadPreset("challenge_case", (preset) => {
+                    const cCase = preset.challengeCase;
+                    if (challengeDesc) {
+                        challengeDesc.innerHTML = `🚨 <strong>EMERGENCIA CLÍNICA:</strong> ${cCase.problemDesc}<br><br>Tu objetivo es seleccionar la mutación estabilizadora adecuada en el bolsillo catalítico para restaurar el puente salino funcional.`;
+                    }
+
+                    if (challengeOptions) {
+                        challengeOptions.innerHTML = "";
+                        cCase.options.forEach(opt => {
+                            const btnOpt = document.createElement("button");
+                            btnOpt.className = "challenge-opt-btn";
+                            btnOpt.innerHTML = `<span style="font-size:1.2rem;">🔬</span> <span><strong>${opt.code}</strong> - ${opt.name}</span>`;
+                            btnOpt.addEventListener("click", () => {
+                                const result = window.phyloStructureSim.submitChallengeAnswer(opt.code, cCase);
+                                if (challengeFeedback) {
+                                    challengeFeedback.innerHTML = `<strong>${result.title}</strong><br><p style="margin-top: 0.4rem; margin-bottom: 0;">${result.feedback}</p>`;
+                                    challengeFeedback.className = `notice-box ${result.correct ? "notice-optimal" : ""}`;
+                                    challengeFeedback.style.borderLeft = `4px solid ${result.correct ? "var(--accent-green)" : "var(--accent-red)"}`;
+                                    challengeFeedback.style.background = result.correct ? "rgba(57, 255, 20, 0.15)" : "rgba(255, 0, 84, 0.15)";
+                                    challengeFeedback.classList.remove("hidden");
+                                }
+
+                                if (result.correct) {
+                                    setTimeout(() => {
+                                        alert("🏆 ¡FELICIDADES! ¡HAS SALVADO LA PROTEÍNA!\n\nEl Ácido Aspártico ha restaurado la estabilidad y la actividad enzimática del paciente. Has completado el Modo Desafío del Módulo 3.");
+                                        window.phyloStructureSim.inChallengeMode = false;
+                                        btnChallenge.innerHTML = "🎯 Modo Desafío: Salva la Proteína";
+                                        btnChallenge.style.background = "";
+                                        if (challengePanel) challengePanel.classList.add("hidden");
+                                    }, 200);
+                                }
+                            });
+                            challengeOptions.appendChild(btnOpt);
+                        });
+                    }
+
+                    // Resaltar en rojo el residuo en problema
+                    window.phyloStructureSim.highlightResidue(cCase.problemResidue, cCase.problemChain, "#ff0054", false);
+                });
+            });
+        }
+
+        // Cargar por defecto la primera estructura al iniciar el módulo
+        setTimeout(() => loadSelectedPreset("hemoglobin"), 200);
     }
 
     // AL CARGAR LA PÁGINA: NO AUTO-CALCULAR, DEJAR RESULTADOS OCULTOS HASTA QUE PULSEN EL BOTÓN
