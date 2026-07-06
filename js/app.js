@@ -718,6 +718,537 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // =========================================================================
+    // --- 10. MÓDULO 2: FILOGENIA (UPGMA & CONEXIÓN ALINEAMIENTO) ---
+    // =========================================================================
+    const phyloSim = new window.PhylogenySimulator();
+    
+    const phyloPresetSelect = document.getElementById("phylo-preset-select");
+    const phyloEditNotice = document.getElementById("phylo-edit-notice");
+    const phyloSpeciesList = document.getElementById("phylo-species-list");
+    const btnAddSpecies = document.getElementById("btn-add-species");
+    const btnPhyloCalculate = document.getElementById("btn-phylo-calculate");
+    const btnPhyloPlay = document.getElementById("btn-phylo-play");
+    const phyloPlayerControls = document.getElementById("phylo-player-controls");
+    const btnPhyloStepPrev = document.getElementById("btn-phylo-step-prev");
+    const btnPhyloStepNext = document.getElementById("btn-phylo-step-next");
+    const phyloAnimSpeed = document.getElementById("phylo-anim-speed");
+    const phyloPlayerStatus = document.getElementById("phylo-player-status");
+    const btnPhyloChallenge = document.getElementById("btn-phylo-challenge");
+    
+    const phyloResultsArea = document.getElementById("phylo-results-area");
+    const phyloConnectionBanner = document.getElementById("phylo-connection-banner");
+    const phyloAlignCountBadge = document.getElementById("phylo-align-count-badge");
+    const phyloStepTitle = document.getElementById("phylo-step-title");
+    const phyloMatrixContainer = document.getElementById("phylo-matrix-container");
+    const phyloCanvas = document.getElementById("phylo-canvas");
+    const phyloChalkboardContent = document.getElementById("phylo-chalkboard-content");
+
+    let phyloCurrentSpecies = [];
+    let phyloIsReadOnly = false;
+
+    function renderSpeciesListUI() {
+        if (!phyloSpeciesList) return;
+        phyloSpeciesList.innerHTML = "";
+        
+        phyloCurrentSpecies.forEach((sp, idx) => {
+            const item = document.createElement("div");
+            item.className = "phylo-species-item";
+            
+            let headerHtml = `<div class="phylo-species-header">
+                                <span class="phylo-species-name">Especie #${idx + 1}: ${phyloIsReadOnly ? sp.name : ''}</span>`;
+            if (!phyloIsReadOnly && phyloCurrentSpecies.length > 2) {
+                headerHtml += `<button type="button" class="phylo-btn-remove" data-idx="${idx}">🗑️ Eliminar</button>`;
+            }
+            headerHtml += `</div>`;
+
+            if (!phyloIsReadOnly) {
+                headerHtml += `<input type="text" class="sp-name-input" data-idx="${idx}" value="${sp.name}" placeholder="Nombre de la especie..." style="margin-bottom:0.2rem;">`;
+            }
+
+            const readonlyAttr = phyloIsReadOnly ? "readonly class='readonly-box'" : "";
+            const seqHtml = `<input type="text" class="sp-seq-input" data-idx="${idx}" value="${sp.seq}" placeholder="Secuencia molecular FASTA (A, C, G, T...)..." ${readonlyAttr}>`;
+
+            item.innerHTML = headerHtml + seqHtml;
+            phyloSpeciesList.appendChild(item);
+        });
+
+        // Eventos de edición y borrado
+        if (!phyloIsReadOnly) {
+            phyloSpeciesList.querySelectorAll(".sp-name-input").forEach(inp => {
+                inp.addEventListener("input", (e) => {
+                    const idx = parseInt(e.target.getAttribute("data-idx"));
+                    phyloCurrentSpecies[idx].name = e.target.value;
+                    clearPhyloResults();
+                });
+            });
+            phyloSpeciesList.querySelectorAll(".sp-seq-input").forEach(inp => {
+                inp.addEventListener("input", (e) => {
+                    const idx = parseInt(e.target.getAttribute("data-idx"));
+                    phyloCurrentSpecies[idx].seq = e.target.value.replace(/[^A-Z]/gi, '').toUpperCase();
+                    clearPhyloResults();
+                });
+            });
+            phyloSpeciesList.querySelectorAll(".phylo-btn-remove").forEach(btn => {
+                btn.addEventListener("click", (e) => {
+                    const idx = parseInt(e.target.getAttribute("data-idx"));
+                    phyloCurrentSpecies.splice(idx, 1);
+                    renderSpeciesListUI();
+                    clearPhyloResults();
+                });
+            });
+        }
+    }
+
+    function loadPhyloPreset(key) {
+        if (!PHYLO_PRESETS || !PHYLO_PRESETS[key]) return;
+        const p = PHYLO_PRESETS[key];
+        
+        phyloCurrentSpecies = p.species.map(s => ({ name: s.name, seq: s.seq }));
+        
+        if (p.type !== "custom") {
+            phyloIsReadOnly = true;
+            if (btnAddSpecies) btnAddSpecies.style.display = "none";
+            if (phyloEditNotice) {
+                phyloEditNotice.innerHTML = `🔒 <strong>Modo Lectura Biológico:</strong> Las especies y secuencias de este caso de estudio están bloqueadas. Selecciona <strong>"✏️ Especies Personalizadas"</strong> para modificar, eliminar o añadir secuencias libres.`;
+                phyloEditNotice.className = "notice-box notice-locked";
+            }
+        } else {
+            phyloIsReadOnly = false;
+            if (btnAddSpecies) btnAddSpecies.style.display = "inline-block";
+            if (phyloEditNotice) {
+                phyloEditNotice.innerHTML = `✏️ <strong>Modo Edición Libre:</strong> Escribe nombres y secuencias FASTA, o haz clic en "+ Agregar" para añadir nuevas especies y ver cómo se modifica el árbol evolutivo.`;
+                phyloEditNotice.className = "notice-box notice-editable";
+            }
+        }
+        renderSpeciesListUI();
+        clearPhyloResults();
+    }
+
+    if (phyloPresetSelect && typeof PHYLO_PRESETS !== "undefined") {
+        phyloPresetSelect.innerHTML = "";
+        Object.keys(PHYLO_PRESETS).forEach(key => {
+            const opt = document.createElement("option");
+            opt.value = key;
+            opt.textContent = PHYLO_PRESETS[key].name;
+            phyloPresetSelect.appendChild(opt);
+        });
+
+        phyloPresetSelect.addEventListener("change", (e) => {
+            loadPhyloPreset(e.target.value);
+        });
+
+        loadPhyloPreset("primates");
+    }
+
+    if (btnAddSpecies) {
+        btnAddSpecies.addEventListener("click", () => {
+            if (phyloIsReadOnly) return;
+            const newNum = phyloCurrentSpecies.length + 1;
+            phyloCurrentSpecies.push({ name: `Especie Nueva #${newNum}`, seq: "ACGTACGT" });
+            renderSpeciesListUI();
+            clearPhyloResults();
+        });
+    }
+
+    function clearPhyloResults() {
+        stopPhyloAnimation();
+        phyloSim.inChallengeMode = false;
+        if (btnPhyloChallenge) {
+            btnPhyloChallenge.innerHTML = "🎯 Modo Desafío Filogenético";
+            btnPhyloChallenge.style.background = "";
+        }
+        if (phyloResultsArea) phyloResultsArea.classList.add("hidden");
+        if (phyloPlayerControls) phyloPlayerControls.classList.add("hidden");
+    }
+
+    function runPhyloSimulation() {
+        stopPhyloAnimation();
+        phyloSim.inChallengeMode = false;
+        if (btnPhyloChallenge) {
+            btnPhyloChallenge.innerHTML = "🎯 Modo Desafío Filogenético";
+            btnPhyloChallenge.style.background = "";
+        }
+        if (phyloPlayerControls) phyloPlayerControls.classList.add("hidden");
+
+        // Validar especies
+        const validSpecies = phyloCurrentSpecies.filter(s => s.name.trim() !== "" && s.seq.trim().length >= 2);
+        if (validSpecies.length < 2) {
+            alert("⚠️ ¡Atención! Se requieren al menos 2 especies con secuencias válidas (de al menos 2 bases o aminoácidos) para calcular las distancias y construir el árbol.");
+            if (phyloResultsArea) phyloResultsArea.classList.add("hidden");
+            return;
+        }
+
+        phyloSim.loadSpecies(validSpecies);
+        phyloSim.computePairwiseDistances(5, -2, -2);
+        phyloSim.runUPGMA();
+
+        const numPairs = (validSpecies.length * (validSpecies.length - 1)) / 2;
+        if (phyloAlignCountBadge) {
+            phyloAlignCountBadge.textContent = `⚡ ${numPairs} Alineamientos Needleman-Wunsch realizados`;
+        }
+
+        phyloResultsArea.classList.remove("hidden");
+        
+        // Mostrar por defecto el árbol completo terminado (el último paso del historial)
+        const finalStep = phyloSim.history.length - 1;
+        renderPhyloStep(finalStep);
+        updatePhyloChalkboardGeneral(finalStep);
+    }
+
+    if (btnPhyloCalculate) {
+        btnPhyloCalculate.addEventListener("click", runPhyloSimulation);
+    }
+
+    // --- 11. RENDERIZADO DE PASOS Y ÁRBOL FILOGENÉTICO ---
+    function renderPhyloStep(stepIdx) {
+        if (!phyloSim.history || !phyloSim.history[stepIdx]) return;
+        const stepData = phyloSim.history[stepIdx];
+        phyloSim.currentStep = stepIdx;
+
+        if (phyloStepTitle) {
+            phyloStepTitle.textContent = stepData.title;
+        }
+
+        // 1. Renderizar Matriz de Distancia Evolutiva para el paso actual
+        if (phyloMatrixContainer) {
+            const clusters = stepData.clusters;
+            const matrix = stepData.matrix;
+            const minPair = stepData.minPair;
+
+            let html = `<table class="phylo-matrix-table"><thead><tr><th>Especie / Grupo</th>`;
+            clusters.forEach(c => {
+                html += `<th>${c.name}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+
+            clusters.forEach((cRow, r) => {
+                html += `<tr><th>${cRow.name}</th>`;
+                clusters.forEach((cCol, c) => {
+                    const val = matrix[r][c];
+                    let cellCls = "";
+                    if (!phyloSim.inChallengeMode && minPair && ((r === minPair.i && c === minPair.j) || (r === minPair.j && c === minPair.i))) {
+                        cellCls = "phylo-cell-min";
+                    }
+                    html += `<td class="${cellCls}" data-r="${r}" data-c="${c}" title="Distancia entre ${cRow.name} y ${cCol.name}: ${val}">${val}</td>`;
+                });
+                html += `</tr>`;
+            });
+            html += `</tbody></table>`;
+            phyloMatrixContainer.innerHTML = html;
+
+            const tdCells = phyloMatrixContainer.querySelectorAll("td");
+            tdCells.forEach(td => {
+                td.addEventListener("click", () => {
+                    const r = parseInt(td.getAttribute("data-r"));
+                    const c = parseInt(td.getAttribute("data-c"));
+
+                    if (phyloSim.inChallengeMode && minPair) {
+                        if ((r === minPair.i && c === minPair.j) || (r === minPair.j && c === minPair.i)) {
+                            td.classList.add("phylo-cell-min");
+                            setTimeout(() => {
+                                const nextStep = stepIdx + 1;
+                                if (nextStep < phyloSim.history.length - 1) {
+                                    alert(`🎉 ¡CORRECTO! Has identificado la distancia mínima (${minPair.dist}) entre "${clusters[minPair.i].name}" y "${clusters[minPair.j].name}".\n\nEl algoritmo UPGMA procederá a fusionar estas dos líneas evolutivas en un ancestro común.`);
+                                    renderPhyloStep(nextStep);
+                                    updatePhyloChalkboardGeneral(nextStep);
+                                } else {
+                                    alert(`🎉 ¡CORRECTO! Has identificado la última agrupación (${minPair.dist}) entre "${clusters[minPair.i].name}" y "${clusters[minPair.j].name}".\n\n🏆 ¡FELICIDADES! Has completado exitosamente la construcción de todo el árbol filogenético.`);
+                                    phyloSim.inChallengeMode = false;
+                                    if (btnPhyloChallenge) {
+                                        btnPhyloChallenge.innerHTML = "🎯 Modo Desafío Filogenético";
+                                        btnPhyloChallenge.style.background = "";
+                                    }
+                                    renderPhyloStep(phyloSim.history.length - 1);
+                                    updatePhyloChalkboardGeneral(phyloSim.history.length - 1);
+                                }
+                            }, 100);
+                        } else if (r === c) {
+                            alert("❌ Esa es la diagonal de identidad (distancia 0 consigo misma). Debes buscar la mínima distancia entre DOS especies diferentes.");
+                        } else {
+                            const origBg = td.style.backgroundColor;
+                            td.style.backgroundColor = "rgba(255, 0, 84, 0.6)";
+                            setTimeout(() => { td.style.backgroundColor = origBg; }, 600);
+                            alert(`❌ Incorrecto. La distancia en esa celda (${matrix[r][c]}) no es la más pequeña en la matriz actual.\n\nBusca el valor mínimo entre dos especies distintas para saber quiénes divergen del ancestro más reciente.`);
+                        }
+                        return;
+                    }
+
+                    tdCells.forEach(t => t.classList.remove("phylo-cell-selected"));
+                    td.classList.add("phylo-cell-selected");
+                    updatePhyloChalkboardCell(stepIdx, r, c);
+                });
+            });
+        }
+
+        // 2. Renderizar Árbol en Canvas
+        drawPhylogeneticTree(stepIdx);
+    }
+
+    function updatePhyloChalkboardGeneral(stepIdx) {
+        if (!phyloChalkboardContent || !phyloSim.history[stepIdx]) return;
+        const stepData = phyloSim.history[stepIdx];
+
+        let html = `<div class="chalkboard-title" style="color: var(--accent-green);">📍 ${stepData.title}</div>`;
+        if (stepData.mergedPair) {
+            html += `<div class="chalkboard-val" style="font-size: 0.95rem; color: #fff;">Agrupamiento: <strong>"${stepData.mergedPair.aName}"</strong> + <strong>"${stepData.mergedPair.bName}"</strong></div>`;
+            html += `<div style="font-size: 0.82rem; color: var(--accent-yellow); margin-top: 0.2rem;">Distancia mutacional: ${stepData.mergedPair.dist} &bull; Altura del nodo ancestral: ${stepData.mergedPair.height}</div>`;
+        } else {
+            html += `<div class="chalkboard-val" style="font-size: 0.95rem; color: #fff;">Distancias calculadas a partir de alineamientos del Módulo 1.</div>`;
+        }
+        html += `<div class="chalkboard-formula" style="margin-top: 0.6rem;">${stepData.explanation}</div>`;
+        
+        phyloChalkboardContent.innerHTML = html;
+    }
+
+    function updatePhyloChalkboardCell(stepIdx, r, c) {
+        if (!phyloChalkboardContent || !phyloSim.history[stepIdx]) return;
+        const stepData = phyloSim.history[stepIdx];
+        const cellFormulas = stepData.cellFormulas || {};
+        const key = `${r}-${c}`;
+        const f = cellFormulas[key];
+
+        if (!f) {
+            updatePhyloChalkboardGeneral(stepIdx);
+            return;
+        }
+
+        let html = `<div class="chalkboard-title" style="color: var(--accent-cyan);">📍 Inspeccionando Celda [${r}, ${c}]: ${f.title}</div>`;
+        html += `<div class="chalkboard-val" style="font-size: 1rem; color: var(--accent-green);">Distancia Evolutiva: <strong class="text-glow">${f.val}</strong></div>`;
+        html += `<div class="chalkboard-formula" style="margin-top: 0.6rem;">${f.formula.replace(/\n/g, '<br>')}</div>`;
+        
+        phyloChalkboardContent.innerHTML = html;
+    }
+
+    function drawPhylogeneticTree(stepIdx) {
+        if (!phyloCanvas || !phyloSim.treeRoot) return;
+        const ctx = phyloCanvas.getContext("2d");
+        const w = phyloCanvas.width;
+        const h = phyloCanvas.height;
+
+        ctx.clearRect(0, 0, w, h);
+
+        const layout = phyloSim.getTreeLayout(w, h);
+        const { nodes, edges, maxH, leftMargin, rightMargin } = layout;
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(leftMargin, h - 30);
+        ctx.lineTo(rightMargin, h - 30);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+        ctx.font = "11px var(--font-mono)";
+        ctx.textAlign = "center";
+        const numTicks = 5;
+        for (let t = 0; t <= numTicks; t++) {
+            const ratio = t / numTicks;
+            const x = rightMargin - (ratio * (rightMargin - leftMargin));
+            const val = (ratio * maxH).toFixed(3);
+            ctx.beginPath();
+            ctx.moveTo(x, h - 33);
+            ctx.lineTo(x, h - 27);
+            ctx.stroke();
+            ctx.fillText(val, x, h - 14);
+        }
+        ctx.textAlign = "left";
+        ctx.fillText("Divergencia Evolutiva (Altura Ancestral UPGMA)", leftMargin, h - 4);
+
+        edges.forEach(edge => {
+            const isCreated = edge.stepCreated <= stepIdx;
+            const isJustCreated = (edge.stepCreated === stepIdx) && (stepIdx > 0);
+            
+            if (isJustCreated) {
+                ctx.strokeStyle = "#ffbe0b"; // Amarillo oro brillante para la rama recién nacida
+                ctx.lineWidth = 3.5;
+                ctx.shadowColor = "#ffbe0b";
+                ctx.shadowBlur = 12;
+            } else if (isCreated) {
+                ctx.strokeStyle = "#00ffcc"; // Cian neón para ramas anteriores
+                ctx.lineWidth = 2.5;
+                ctx.shadowColor = "#00ffcc";
+                ctx.shadowBlur = 6;
+            } else {
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.1)"; // Línea tenue para ramas futuras
+                ctx.lineWidth = 1;
+                ctx.shadowBlur = 0;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(edge.fromX, edge.fromY);
+            ctx.lineTo(edge.fromX, edge.toY);
+            ctx.lineTo(edge.toX, edge.toY);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        });
+
+        nodes.forEach(node => {
+            const isCreated = node.stepCreated <= stepIdx;
+            const isJustCreated = (node.stepCreated === stepIdx) && (stepIdx > 0);
+
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, node.isLeaf ? 5 : (isJustCreated ? 7 : 6), 0, Math.PI * 2);
+            
+            if (node.isLeaf) {
+                ctx.fillStyle = "#39ff14";
+                ctx.shadowColor = "#39ff14";
+                ctx.shadowBlur = 8;
+            } else if (isJustCreated) {
+                ctx.fillStyle = "#ffbe0b"; // Nodo dorado recién creado
+                ctx.shadowColor = "#ffbe0b";
+                ctx.shadowBlur = 12;
+            } else if (isCreated) {
+                ctx.fillStyle = "#00ffcc";
+                ctx.shadowColor = "#00ffcc";
+                ctx.shadowBlur = 6;
+            } else {
+                ctx.fillStyle = "rgba(255, 255, 255, 0.2)"; // Nodo futuro
+                ctx.shadowBlur = 0;
+            }
+            
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            if (node.isLeaf) {
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 13px var(--font-main, sans-serif)";
+                ctx.textAlign = "left";
+                ctx.fillText(`🌿 ${node.name}`, node.x + 10, node.y + 4);
+            } else if (isCreated) {
+                ctx.fillStyle = isJustCreated ? "#ffbe0b" : "var(--accent-yellow, #ffbe0b)";
+                ctx.font = isJustCreated ? "bold 12px var(--font-mono)" : "11px var(--font-mono)";
+                ctx.textAlign = "center";
+                ctx.fillText(`h=${node.height}`, node.x - 15, node.y - 8);
+            }
+        });
+    }
+
+    // --- 12. REPRODUCTOR PASO A PASO FILOGENÍA ---
+    function stopPhyloAnimation() {
+        if (phyloSim.animTimer) clearInterval(phyloSim.animTimer);
+        phyloSim.isPlaying = false;
+        if (btnPhyloPlay) btnPhyloPlay.innerHTML = `<i class="icon">▶️</i> Reproducir Paso a Paso`;
+        if (phyloPlayerStatus) phyloPlayerStatus.textContent = "Pausado / Detenido";
+    }
+
+    function advancePhyloStep(steps = 1) {
+        let target = phyloSim.currentStep + steps;
+        if (target >= phyloSim.history.length) {
+            target = phyloSim.history.length - 1;
+            stopPhyloAnimation();
+        }
+        if (target < 0) target = 0;
+
+        renderPhyloStep(target);
+        updatePhyloChalkboardGeneral(target);
+
+        if (phyloPlayerStatus) {
+            phyloPlayerStatus.textContent = `Paso ${target} de ${phyloSim.history.length - 1}`;
+        }
+    }
+
+    if (btnPhyloPlay) {
+        btnPhyloPlay.addEventListener("click", () => {
+            if (phyloResultsArea && phyloResultsArea.classList.contains("hidden")) {
+                runPhyloSimulation();
+                if (phyloResultsArea.classList.contains("hidden")) return;
+            }
+
+            if (phyloSim.isPlaying) {
+                stopPhyloAnimation();
+                if (phyloPlayerStatus) phyloPlayerStatus.textContent = `⏸️ Pausado (Paso ${phyloSim.currentStep})`;
+            } else {
+                phyloSim.isPlaying = true;
+                btnPhyloPlay.innerHTML = `<i class="icon">⏸️</i> Pausar Animación`;
+                if (phyloPlayerControls) phyloPlayerControls.classList.remove("hidden");
+
+                const speedVal = phyloAnimSpeed ? phyloAnimSpeed.value : "manual";
+                if (speedVal === "manual") {
+                    phyloSim.isPlaying = false;
+                    if (phyloPlayerStatus) phyloPlayerStatus.textContent = "⏸️ Modo Manual (usa botones de paso)";
+                    if (phyloSim.currentStep >= phyloSim.history.length - 1) {
+                        renderPhyloStep(0);
+                        updatePhyloChalkboardGeneral(0);
+                    }
+                } else {
+                    if (phyloSim.currentStep >= phyloSim.history.length - 1) {
+                        renderPhyloStep(0);
+                        updatePhyloChalkboardGeneral(0);
+                    }
+                    if (phyloPlayerStatus) phyloPlayerStatus.textContent = "▶️ Construyendo árbol en tiempo real...";
+                    phyloSim.animTimer = setInterval(() => advancePhyloStep(1), parseInt(speedVal));
+                }
+            }
+        });
+    }
+
+    if (btnPhyloStepPrev) {
+        btnPhyloStepPrev.addEventListener("click", () => {
+            if (phyloSim.animTimer) clearInterval(phyloSim.animTimer);
+            if (btnPhyloPlay) btnPhyloPlay.innerHTML = `<i class="icon">▶️</i> Continuar Auto`;
+            phyloSim.isPlaying = false;
+            if (phyloAnimSpeed) phyloAnimSpeed.value = "manual";
+            advancePhyloStep(-1);
+        });
+    }
+
+    if (btnPhyloStepNext) {
+        btnPhyloStepNext.addEventListener("click", () => {
+            if (phyloSim.animTimer) clearInterval(phyloSim.animTimer);
+            if (btnPhyloPlay) btnPhyloPlay.innerHTML = `<i class="icon">▶️</i> Continuar Auto`;
+            phyloSim.isPlaying = false;
+            if (phyloAnimSpeed) phyloAnimSpeed.value = "manual";
+            advancePhyloStep(1);
+        });
+    }
+
+    if (phyloAnimSpeed) {
+        phyloAnimSpeed.addEventListener("change", () => {
+            if (phyloPlayerControls && !phyloPlayerControls.classList.contains("hidden")) {
+                if (phyloSim.animTimer) clearInterval(phyloSim.animTimer);
+                const speedVal = phyloAnimSpeed.value;
+                if (speedVal === "manual") {
+                    phyloSim.isPlaying = false;
+                    if (btnPhyloPlay) btnPhyloPlay.innerHTML = `<i class="icon">▶️</i> Continuar Auto`;
+                    if (phyloPlayerStatus) phyloPlayerStatus.textContent = "⏸️ Modo Manual";
+                } else {
+                    phyloSim.isPlaying = true;
+                    if (btnPhyloPlay) btnPhyloPlay.innerHTML = `<i class="icon">⏸️</i> Pausar Animación`;
+                    if (phyloPlayerStatus) phyloPlayerStatus.textContent = "▶️ Construyendo árbol...";
+                    phyloSim.animTimer = setInterval(() => advancePhyloStep(1), parseInt(speedVal));
+                }
+            }
+        });
+    }
+
+    // --- 13. MODO DESAFÍO FILOGENÉTICO ---
+    if (btnPhyloChallenge) {
+        btnPhyloChallenge.addEventListener("click", () => {
+            if (phyloSim.inChallengeMode) {
+                phyloSim.inChallengeMode = false;
+                btnPhyloChallenge.innerHTML = "🎯 Modo Desafío Filogenético";
+                btnPhyloChallenge.style.background = "";
+                runPhyloSimulation();
+            } else {
+                if (phyloResultsArea && phyloResultsArea.classList.contains("hidden")) {
+                    runPhyloSimulation();
+                }
+                phyloSim.inChallengeMode = true;
+                stopPhyloAnimation();
+                if (phyloPlayerControls) phyloPlayerControls.classList.add("hidden");
+                
+                btnPhyloChallenge.innerHTML = "❌ Salir del Desafío";
+                btnPhyloChallenge.style.background = "#ff0054";
+                
+                renderPhyloStep(0);
+                updatePhyloChalkboardGeneral(0);
+                
+                alert("🎯 ¡MODO DESAFÍO FILOGENÉTICO ACTIVADO!\n\n1. El resaltado verde automático de la mínima distancia ha sido ocultado.\n2. Examina los valores de la Matriz de Distancia actual en el Paso 0.\n3. Haz clic en la celda que contenga la distancia MÍNIMA entre dos especies diferentes para predecir quiénes se agruparán primero en la evolución.");
+            }
+        });
+    }
+
     // AL CARGAR LA PÁGINA: NO AUTO-CALCULAR, DEJAR RESULTADOS OCULTOS HASTA QUE PULSEN EL BOTÓN
     if (resultsArea) resultsArea.classList.add("hidden");
 });

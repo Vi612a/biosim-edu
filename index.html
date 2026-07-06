@@ -170,16 +170,111 @@
         </section>
 
         <!-- ========================================== -->
-        <!-- MÓDULO 2: FILOGENIA (ESQUELETO)            -->
+        <!-- MÓDULO 2: FILOGENIA (UPGMA INTERACTIVO)    -->
         <!-- ========================================== -->
         <section id="mod-phylogeny" class="tab-content">
-            <div class="placeholder-card">
-                <span class="placeholder-icon">🌳</span>
-                <h2>Módulo de Filogenia (Árboles Evolutivos)</h2>
-                <p>En este módulo implementaremos la construcción dinámica de árboles filogenéticos utilizando los algoritmos <strong>UPGMA</strong> y <strong>Neighbor-Joining</strong> a partir de matrices de distancia genética ingresadas por los estudiantes.</p>
-                <div style="margin-top: 1.5rem; display: inline-block; background: rgba(0, 255, 204, 0.1); border: 1px solid var(--accent-cyan); padding: 0.6rem 1.2rem; border-radius: 50px; font-size: 0.85rem; color: var(--accent-cyan);">
-                    🚧 Estructura planeada - Próximo módulo a integrar
-                </div>
+            <div class="workspace-grid">
+                <!-- COLUMNA IZQUIERDA: CONTROLES DE FILOGENIA -->
+                <aside class="controls-sidebar">
+                    <div class="panel-card">
+                        <h2 class="panel-title">🌳 Configuración Filogenética</h2>
+                        
+                        <div class="notice-box" style="border-color: var(--accent-green); color: var(--accent-green); background: rgba(57, 255, 20, 0.08); margin-bottom: 1rem;">
+                            <strong>⚡ Agrupamiento UPGMA</strong><br>
+                            Conexión directa: Matriz calculada automáticamente mediante alineamientos Needleman-Wunsch del Módulo 1.
+                        </div>
+
+                        <!-- Selector de Presets -->
+                        <div class="form-group">
+                            <label class="form-label">Ejemplos Biológicos Pre-cargados:</label>
+                            <select id="phylo-preset-select" class="form-select"></select>
+                        </div>
+
+                        <div id="phylo-edit-notice" class="notice-box notice-locked"></div>
+
+                        <!-- Lista de Especies y Secuencias -->
+                        <div class="form-group">
+                            <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                                <span>🧬 Especies y Secuencias FASTA:</span>
+                                <button id="btn-add-species" class="btn btn-secondary" style="padding: 0.2rem 0.6rem; font-size: 0.75rem; border-color: var(--accent-green); color: var(--accent-green); display:none;">+ Agregar</button>
+                            </label>
+                            <div id="phylo-species-list" style="max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem; padding-right: 0.3rem;"></div>
+                        </div>
+
+                        <!-- Botones de Acción Filogenética -->
+                        <div class="btn-group">
+                            <button id="btn-phylo-calculate" class="btn btn-primary" style="background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan));">⚡ Construir Árbol (UPGMA)</button>
+                            <button id="btn-phylo-play" class="btn btn-secondary">▶️ Reproducir Paso a Paso</button>
+                            
+                            <!-- CONTROLES DIDÁCTICOS DE REPRODUCCIÓN FILOGENÉTICA -->
+                            <div id="phylo-player-controls" class="player-controls-box hidden" style="border-color: var(--accent-green);">
+                                <div style="font-size: 0.8rem; color: var(--accent-green); margin-bottom: 0.5rem; font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+                                    <span>🕹️ Pasos UPGMA:</span>
+                                    <span id="phylo-player-status" style="font-size: 0.75rem; color: var(--accent-yellow);">Listo</span>
+                                </div>
+                                <div style="display: flex; gap: 0.4rem; margin-bottom: 0.6rem;">
+                                    <button id="btn-phylo-step-prev" class="btn btn-secondary" style="flex:1; padding: 0.45rem; font-size: 0.8rem; background: rgba(255, 255, 255, 0.08); color: #fff;">⏮️ Anterior</button>
+                                    <button id="btn-phylo-step-next" class="btn btn-secondary" style="flex:1; padding: 0.45rem; font-size: 0.8rem; background: rgba(57, 255, 20, 0.15); border-color: var(--accent-green); color: #fff;">⏭️ +1 Agrupación</button>
+                                </div>
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                    <span>⚡ Velocidad:</span>
+                                    <select id="phylo-anim-speed" class="form-select" style="width: auto; padding: 0.2rem 0.5rem; font-size: 0.8rem;">
+                                        <option value="2000">Lenta (2.0s)</option>
+                                        <option value="1000">Normal (1.0s)</option>
+                                        <option value="400">Rápida (0.4s)</option>
+                                        <option value="manual" selected>⏸️ Solo Manual</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <button id="btn-phylo-challenge" class="btn btn-challenge" style="border-color: var(--accent-yellow); color: #ffffff;">🎯 Modo Desafío Filogenético</button>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- COLUMNA DERECHA: MATRIZ DE DISTANCIA Y ÁRBOL -->
+                <section class="results-display">
+                    <div id="phylo-results-area" class="hidden">
+                        
+                        <!-- Banner de Conexión entre Módulos -->
+                        <div id="phylo-connection-banner" class="panel-card" style="padding: 1rem; background: linear-gradient(135deg, rgba(58, 134, 255, 0.15), rgba(0, 255, 204, 0.15)); border-color: var(--accent-cyan); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem;">
+                            <div>
+                                <h4 style="color: var(--accent-cyan); margin-bottom: 0.2rem; font-size: 0.95rem;">🔗 Conexión Módulo 1 ➔ MÓDULO 2 ACTIVADA</h4>
+                                <p style="font-size: 0.82rem; color: var(--text-primary); margin: 0;">Se ejecutaron automáticamente alineamientos Needleman-Wunsch por pares en segundo plano para construir la matriz de distancias.</p>
+                            </div>
+                            <span id="phylo-align-count-badge" style="background: var(--accent-blue); color: #fff; font-size: 0.75rem; font-weight: 700; padding: 0.3rem 0.8rem; border-radius: 20px; white-space: nowrap;">⚡ 10 Alineamientos realizados</span>
+                        </div>
+
+                        <!-- DENDROGRAMA EVOLUTIVO EN CANVAS HTML5 -->
+                        <div class="panel-card">
+                            <h3 class="panel-title" style="color: var(--accent-cyan);">🌳 Árbol Filogenético Evolutivo (Dendrograma UPGMA)</h3>
+                            <div style="background: #070b14; border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; position: relative; overflow-x: auto;">
+                                <canvas id="phylo-canvas" width="800" height="380" style="width: 100%; min-width: 650px; display: block; margin: 0 auto;"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- MATRIZ DE DISTANCIA FILOGENÉTICA INTERACTIVA -->
+                        <div class="panel-card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                                <h3 class="panel-title" style="border:none; margin:0; padding:0; color: var(--accent-green);">📊 Matriz de Distancia Evolutiva (Divergencia)</h3>
+                                <span id="phylo-step-title" style="font-size: 0.85rem; font-weight: 600; color: var(--accent-yellow);">Paso 0: Estado Inicial</span>
+                            </div>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                                💡 <strong style="color:var(--accent-green);">Tip Didáctico:</strong> En cada paso UPGMA, los dos parientes con menor distancia se agrupan en verde. Haz clic sobre cualquier celda para abrir la <strong>Pizarra Didáctica Filogenética</strong> e inspeccionar la fórmula matemática.
+                            </p>
+                            <div id="phylo-matrix-container" class="matrix-wrapper" style="padding: 0.5rem; overflow-x: auto;"></div>
+                        </div>
+
+                        <!-- PIZARRA DIDÁCTICA FILOGENÉTICA (310px FIJOS) -->
+                        <div id="phylo-chalkboard-box" class="chalkboard-box" style="border-color: var(--accent-green);">
+                            <div id="phylo-chalkboard-content">
+                                <div class="chalkboard-title" style="color: var(--accent-green);">📍 Pizarra Didáctica Filogenética</div>
+                                <div class="chalkboard-val" style="font-size: 1rem; color: #fff;">Haz clic en una celda de la Matriz o avanza un paso para ver el desglose matemático UPGMA.</div>
+                                <div class="chalkboard-formula">Aquí se mostrarán en tiempo real los cálculos del promedio aritmético ponderado que agrupan a las especies a lo largo del tiempo evolutivo.</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
             </div>
         </section>
 
@@ -244,6 +339,7 @@
     <!-- SCRIPTS -->
     <script src="js/presets.js"></script>
     <script src="js/alignment.js"></script>
+    <script src="js/phylogeny.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

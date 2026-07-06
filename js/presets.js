@@ -1,6 +1,6 @@
 /**
  * presets.js - Base de datos didáctica de secuencias biológicas para BioSim Edu.
- * Contiene casos educativos para el algoritmo global Needleman-Wunsch.
+ * Contiene casos educativos para el algoritmo global Needleman-Wunsch y para Filogenia UPGMA.
  */
 
 const PRESETS = {
@@ -53,6 +53,54 @@ const PRESETS = {
         match: 5,
         mismatch: -2,
         gap: -2
+    }
+};
+
+const PHYLO_PRESETS = {
+    primates: {
+        name: "🐵 Familia de Primates (Humano, Chimpancé, Gorila, Orangután)",
+        description: "Demuestra la extrema conservación evolutiva en primates. Humano y Chimpancé se agruparán primero al tener una divergencia casi nula.",
+        type: "protein",
+        species: [
+            { name: "Humano", seq: "VHLTPEEKSAVTALWGKVNVDEVGGEALGR" },
+            { name: "Chimpancé", seq: "VHLTPEEKSAVTALWGKVNVDEVGGEALGR" },
+            { name: "Gorila", seq: "VHLTPEEKSAVTSLWGKVNVDEVGGEALGR" },
+            { name: "Orangután", seq: "VHLTPEEKSAVTALWGKVNVDEIGGEALGR" },
+            { name: "Macaco Rhesus", seq: "VHLTPEEKNAVTALWGKVNVDEVGGEALGR" }
+        ]
+    },
+    mammals: {
+        name: "🐭 Evolución de Mamíferos (Humano, Perro, Vaca, Ratón)",
+        description: "Observa cómo el algoritmo UPGMA separa las líneas evolutivas de los mamíferos terrestres comparando sus cadenas beta-globina.",
+        type: "protein",
+        species: [
+            { name: "Humano", seq: "VHLTPEEKSAVTALWGKVNVDEVGGEALGR" },
+            { name: "Perro", seq: "VHLTAEEKSLVSGLWGKVNVDEVGGEALGR" },
+            { name: "Vaca", seq: "VHLTAEEKAAVTAFWGKVKVDEVGGEALGR" },
+            { name: "Ratón", seq: "VHLTDAEKAAVSCLWGKVNSDEVGGEALGR" }
+        ]
+    },
+    vertebrates: {
+        name: "🐟 Diversidad Vertebrada (Humano, Ave, Rana, Pez Cebra)",
+        description: "Alineamiento global que evidencia la separación evolutiva en grandes clases anatómicas de vertebrados a lo largo de cientos de millones de años.",
+        type: "protein",
+        species: [
+            { name: "Humano (Mamífero)", seq: "VHLTPEEKSAVTALWGKVNVDEVGGEALGR" },
+            { name: "Pollo (Ave)", seq: "VHWTAEEKQLITGLWGKVNVAECGAEALAR" },
+            { name: "Rana (Anfibio)", seq: "VHWTAEEKAVITGLWGKVNVEDCGGEALAR" },
+            { name: "Pez Cebra (Pez)", seq: "VHWTAEEKQLITGLWGKVNVEDAGCEALAR" }
+        ]
+    },
+    custom_phylo: {
+        name: "✏️ Especies Personalizadas (Edición Libre en formato FASTA / Texto)",
+        description: "Agrega, modifica o elimina tus propias especies y secuencias moleculares para descubrir sus relaciones filogenéticas.",
+        type: "custom",
+        species: [
+            { name: "Especie Alfa", seq: "ACGTACGTACGTACGT" },
+            { name: "Especie Beta", seq: "ACGTACGTACGAACGT" },
+            { name: "Especie Gamma", seq: "ACGTTCGAACGAACGT" },
+            { name: "Especie Delta", seq: "AGGTTCGAACGAACGT" }
+        ]
     }
 };
 
