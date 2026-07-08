@@ -479,16 +479,143 @@
         </section>
 
         <!-- ========================================== -->
-        <!-- MÓDULO 4: GENÓMICA (GRÁFICOS DE DE BRUIJN) -->
+        <!-- MÓDULO 4: GENÓMICA (GRÁFICOS DE DE BRUIJN & DOGMA) -->
         <!-- ========================================== -->
         <section id="mod-genomics" class="tab-content">
-            <div class="placeholder-card">
-                <span class="placeholder-icon">🧩</span>
-                <h2>Módulo de Genómica: Ensamblaje y Gráficos de De Bruijn</h2>
-                <p>Simulador interactivo donde los estudiantes ingresarán fragmentos de lecturas de ADN (reads en FASTA) para fracturarlos en <em>k-mers</em> y construir visualmente un <strong>Gráfico de De Bruijn</strong>, ilustrando cómo se ensamblan los genomas en bioinformática computacional.</p>
-                <div style="margin-top: 1.5rem; display: inline-block; background: rgba(131, 56, 236, 0.1); border: 1px solid var(--accent-purple); padding: 0.6rem 1.2rem; border-radius: 50px; font-size: 0.85rem; color: var(--accent-purple);">
-                    🚧 Estructura planeada - Próximo módulo a integrar
-                </div>
+            <div class="workspace-grid">
+                
+                <!-- COLUMNA IZQUIERDA: CONTROLES Y PARÁMETROS -->
+                <aside class="controls-sidebar">
+                    <!-- PANEL DE SELECCIÓN DE SUB-HERRAMIENTA -->
+                    <div class="panel-card" style="margin-bottom: 1rem;">
+                        <h2 class="panel-title">🧩 Herramienta Genómica</h2>
+                        <div style="display: flex; gap: 0.5rem; background: rgba(0,0,0,0.3); padding: 0.4rem; border-radius: 8px;">
+                            <button id="btn-mode-debruijn" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem; padding: 0.5rem; border-color: var(--accent-purple); background: var(--accent-purple); color: white;">🧩 Ensamble (De Bruijn)</button>
+                            <button id="btn-mode-dogma" class="btn btn-secondary" style="flex: 1; font-size: 0.8rem; padding: 0.5rem; border-color: transparent;">🧬 Dogma Central (Traducción)</button>
+                        </div>
+                    </div>
+
+                    <div class="panel-card">
+                        <h2 class="panel-title">📋 Presets y Parámetros</h2>
+                        
+                        <!-- SELECTOR DE PRESETS -->
+                        <div class="form-group">
+                            <label class="form-label" for="genomics-preset-select">Casos Clínicos y Genómicos:</label>
+                            <select id="genomics-preset-select" class="form-select"></select>
+                        </div>
+
+                        <!-- DESCRIPCIÓN DEL PRESET -->
+                        <div id="genomics-desc-box" class="notice-box notice-unlocked" style="margin-bottom: 1rem; font-size: 0.85rem;"></div>
+
+                        <!-- CONTENEDOR DE INPUTS: DE BRUIJN -->
+                        <div id="debruijn-inputs">
+                            <div class="form-group">
+                                <label class="form-label" for="genomics-reads-input">Lecturas cortas (Reads en FASTA o por comas):</label>
+                                <textarea id="genomics-reads-input" class="form-textarea" rows="4" spellcheck="false" placeholder="ATGC, TGCA, GCAC, CACG..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label class="form-label" for="genomics-k-slider" style="margin: 0;">Tamaño del k-mer (Longitud):</label>
+                                    <span id="genomics-k-val" style="color: var(--accent-purple); font-weight: 800; font-size: 1rem;">k = 4</span>
+                                </div>
+                                <input type="range" id="genomics-k-slider" min="3" max="6" step="1" value="4" style="width: 100%; margin-top: 0.5rem; cursor: pointer;">
+                            </div>
+                            <button id="btn-calc-debruijn" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+                                ⚙️ Construir Grafo de De Bruijn
+                            </button>
+                        </div>
+
+                        <!-- CONTENEDOR DE INPUTS: DOGMA CENTRAL (Oculto al inicio) -->
+                        <div id="dogma-inputs" class="hidden">
+                            <div class="form-group">
+                                <label class="form-label" for="genomics-dna-input">Secuencia de ADN Codificante (5' ➔ 3'):</label>
+                                <textarea id="genomics-dna-input" class="form-textarea" rows="3" spellcheck="false" placeholder="ATGGTGCACCTGACTCCT..."></textarea>
+                            </div>
+                            <button id="btn-calc-dogma" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+                                ⚙️ Iniciar Transcripción y Traducción
+                            </button>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- COLUMNA DERECHA: VISUALIZACIÓN INTERACTIVA -->
+                <section class="visual-area">
+                    <div class="panel-card" style="min-height: 480px; display: flex; flex-direction: column;">
+                        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.8rem; margin-bottom: 1rem;">
+                            <h2 id="genomics-visual-title" class="panel-title" style="margin: 0; color: var(--accent-cyan);">🌐 Gráficos de De Bruijn: Nodos (k-1 mers) y Aristas (k-mers)</h2>
+                            <div style="display: flex; gap: 0.6rem; align-items: center;">
+                                <span id="genomics-step-counter" class="status-badge" style="background: rgba(0, 255, 204, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan);">Paso: 0 / 0</span>
+                            </div>
+                        </div>
+
+                        <!-- LIENZO / CONTENEDOR PRINCIPAL DE VISUALIZACIÓN -->
+                        <div id="genomics-visual-container" style="flex: 1; display: flex; align-items: center; justify-content: center; min-height: 380px; background: rgba(0,0,0,0.25); border-radius: 10px; position: relative;">
+                            <!-- Inyectado por JS -->
+                        </div>
+
+                        <!-- BARRA DE CONTROLES DIDÁCTICOS DIRECTAMENTE DEBAJO DEL GRÁFICO (SIN SCROLL) -->
+                        <div style="display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); align-items: center;">
+                            <button id="btn-genomics-step-prev" class="btn btn-secondary" style="flex: 1; min-width: 130px; background: rgba(255, 255, 255, 0.08); color: white;" disabled>
+                                ⏮️ Paso Anterior
+                            </button>
+                            <button id="btn-genomics-step-next" class="btn btn-secondary" style="flex: 1; min-width: 130px; background: rgba(0, 255, 204, 0.15); border-color: var(--accent-cyan); color: white;">
+                                ⏭️ Siguiente Paso
+                            </button>
+                            <button id="btn-genomics-play" class="btn btn-secondary" style="flex: 1; min-width: 150px; background: rgba(58, 134, 255, 0.15); border-color: var(--accent-blue); color: white;">
+                                ▶️ Reproducir Ensamble
+                            </button>
+                            <button id="btn-genomics-reset" class="btn btn-secondary" style="flex: 0 1 100px; background: rgba(255,255,255,0.1); color: white;">
+                                🔄 Reiniciar
+                            </button>
+                            <button id="btn-genomics-challenge" class="btn btn-challenge" style="flex: 1; min-width: 170px;">
+                                🎯 Modo Desafío: Código Roto
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- PANEL DE DESAFÍO GAMIFICADO (Oculto inicialmente) -->
+                    <div id="genomics-challenge-panel" class="panel-card hidden" style="border: 2px solid var(--accent-yellow); background: linear-gradient(135deg, rgba(255, 190, 11, 0.08), rgba(131, 56, 236, 0.08));">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem; border-bottom: 1px solid rgba(255, 190, 11, 0.3); padding-bottom: 0.5rem;">
+                            <h3 id="genomics-challenge-title" style="color: var(--accent-yellow); font-size: 1.1rem; margin: 0; display: flex; align-items: center; gap: 0.5rem;">🎯 CASO CLÍNICO DESAFÍO: Código Genético Roto</h3>
+                            <span style="background: var(--accent-red); color: white; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 4px;">🚨 EMERGENCIA GENÓMICA</span>
+                        </div>
+                        <p id="genomics-challenge-desc" style="font-size: 0.9rem; color: var(--text-primary); line-height: 1.5; margin-bottom: 1rem;">
+                            Un paciente presenta un codón de parada prematuro (Nonsense) en su gen CFTR. ¿Qué nucleótido restaurará la proteína completa?
+                        </p>
+                        <div id="genomics-challenge-options" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.8rem; margin-bottom: 1rem;">
+                            <!-- Inyectado por JS -->
+                        </div>
+                        <div id="genomics-challenge-feedback" class="hidden notice-box" style="margin-top: 1rem; margin-bottom: 0;"></div>
+                    </div>
+
+                    <!-- PIZARRA DIDÁCTICA Y RESULTADO CONSENSO -->
+                    <div class="panel-card">
+                        <h3 class="panel-title" style="color: var(--accent-cyan);">💡 Pizarra Didáctica: Explicación Bioinformática</h3>
+                        <div id="genomics-chalkboard" style="padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 8px; font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 1rem; border-left: 4px solid var(--accent-cyan);">
+                            Selecciona un preset o ingresa fragmentos para iniciar el ensamble de secuencias.
+                        </div>
+
+                        <!-- CAJA DEL GENOMA CONSENSO ENSAMBLADO -->
+                        <div id="genomics-consensus-box" class="hidden" style="background: rgba(0, 255, 204, 0.08); border: 1px solid var(--accent-cyan); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <div style="font-size: 0.8rem; color: var(--accent-cyan); font-weight: 700; margin-bottom: 0.4rem; text-transform: uppercase;">🏆 Contig Consenso Reconstruido (Secuencia Ensamblada):</div>
+                            <div id="genomics-consensus-seq" style="font-family: monospace; font-size: 1.1rem; font-weight: 800; color: white; letter-spacing: 2px; word-break: break-all;"></div>
+                        </div>
+
+                        <!-- CONEXIONES INTER-MODULARES (AHORA DEBAJO DE LA PIZARRA DIDÁCTICA) -->
+                        <div id="genomics-connection-box" class="hidden notice-box" style="margin-top: 0.5rem; margin-bottom: 0; border: 2px solid var(--accent-cyan); background: rgba(0, 255, 204, 0.1); text-align: center;">
+                            <div style="font-size: 0.85rem; color: var(--text-primary); margin-bottom: 0.6rem;" id="genomics-conn-text">
+                                ⚡ Secuencia Ensamblada Lista.
+                            </div>
+                            <button id="btn-send-to-mod1" class="btn btn-primary hidden" style="width: 100%; font-size: 0.85rem; padding: 0.6rem; background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue)); color: #000; font-weight: 800;">
+                                📤 Enviar Contig al Módulo 1 (Alineamiento)
+                            </button>
+                            <button id="btn-send-to-mod3" class="btn btn-primary hidden" style="width: 100%; font-size: 0.85rem; padding: 0.6rem; background: linear-gradient(135deg, #ff0054, #ffbe0b); color: white; font-weight: 800; margin-top: 0.5rem;">
+                                🧬 Ver Mutación E6V en Módulo 3 (3Dmol.js)
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
             </div>
         </section>
 
@@ -496,30 +623,99 @@
         <!-- GUÍA DIDÁCTICA Y TUTORIALES                -->
         <!-- ========================================== -->
         <section id="mod-guide" class="tab-content">
-            <div class="panel-card" style="max-width: 900px; margin: 0 auto;">
-                <h2 class="panel-title">📖 Guía Rápida: ¿Cómo usar este simulador en clase?</h2>
-                <div style="line-height: 1.8; color: var(--text-secondary); margin-top: 1rem;">
-                    <h3 style="color: var(--text-primary); margin-top: 1rem;">1. ¿Qué es el Alineamiento de Secuencias?</h3>
-                    <p>En bioinformática, alinear dos secuencias de ADN o proteínas nos permite descubrir qué tan emparentadas están evolutivamente o identificar mutaciones causantes de enfermedades. Para hacerlo sin que las computadoras tarden años, usamos <strong>Programación Dinámica</strong>.</p>
-                    
-                    <h3 style="color: var(--text-primary); margin-top: 1.5rem;">2. Algoritmo Global (Needleman-Wunsch)</h3>
-                    <p>Intenta alinear las dos secuencias de principio a fin. Es el estándar para comparar genes o proteínas homólogas de tamaño similar (ej. Hemoglobina humana vs. ratón). Utiliza tres puntuaciones: coincidencia (+), diferencia (-) y brecha o gap (-).</p>
+            <div style="max-width: 1050px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.5rem;">
+                
+                <div class="panel-card" style="background: linear-gradient(135deg, rgba(58, 134, 255, 0.1), rgba(131, 56, 236, 0.1)); border: 1px solid rgba(255, 255, 255, 0.15);">
+                    <h2 class="panel-title" style="font-size: 1.5rem; color: white; margin-bottom: 0.5rem;">📖 Guía Didáctica Integral: Ecosistema de Bioinformática Computacional</h2>
+                    <p style="color: var(--text-secondary); line-height: 1.6; font-size: 0.95rem; margin: 0;">
+                        Este simulador interactivo está diseñado para la enseñanza universitaria y secundaria avanzada de biología molecular y bioinformática. Integra cuatro módulos computacionales interconectados que permiten a los estudiantes visualizar, manipular y experimentar con los algoritmos e instrumentos teóricos del análisis genómico moderno.
+                    </p>
+                </div>
 
-                    <h3 style="color: var(--text-primary); margin-top: 1.5rem;">3. Características Didácticas del Simulador</h3>
-                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem;">
-                        <li><strong>Pizarra Didáctica:</strong> En lugar de solo mostrarte el resultado, haz clic en cualquier celda de la matriz para ver la fórmula matemática con los valores exactos de Diagonal, Arriba e Izquierda.</li>
-                        <li><strong>Reproducción Paso a Paso:</strong> Presiona "Reproducir Paso a Paso" para ver cómo el algoritmo recorre la matriz resolviendo subproblemas.</li>
-                        <li><strong>Modo Desafío (Traceback Game):</strong> Pon a prueba tus alumnos. El simulador ocultará la línea azul del camino óptimo y el estudiante deberá hacer clic en las celdas correctas para retroceder desde el final hasta el inicio.</li>
-                        <li><strong>Mapa de Calor (Heatmap):</strong> Si cargas moléculas reales de más de 35 aminoácidos, el simulador cambiará automáticamente a un mapa de color interactivo para que no te pierdas en miles de números.</li>
+                <!-- MÓDULO 1 -->
+                <div class="panel-card" style="border-left: 4px solid var(--accent-cyan);">
+                    <h3 style="color: var(--accent-cyan); font-size: 1.2rem; margin-top: 0; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem;">
+                        🧬 Módulo 1: Alineamiento de Secuencias (Algoritmo Needleman-Wunsch)
+                    </h3>
+                    <p style="color: var(--text-secondary); line-height: 1.6; font-size: 0.9rem;">
+                        Permite comprender los principios de la <strong>Programación Dinámica</strong> aplicada a la homología evolutiva y clínica de secuencias ADN o aminoácidos.
+                    </p>
+                    <ul style="color: var(--text-secondary); line-height: 1.7; font-size: 0.9rem; margin-left: 1.2rem; margin-top: 0.5rem; margin-bottom: 0;">
+                        <li><strong>Matriz Dinámica e Interactiva:</strong> Haz clic en cualquier celda para activar la <em>Pizarra Didáctica</em> y observar el cálculo exacto (valores provenientes de la Diagonal, Arriba e Izquierda según la puntuación de Match, Mismatch y Gap).</li>
+                        <li><strong>Reproducción Paso a Paso:</strong> Controla el avance del algoritmo celda por celda para enseñar en el aula cómo se construye la solución global óptima.</li>
+                        <li><strong>Mapa de Calor (Heatmap):</strong> Para secuencias reales mayores a 35 bases, la vista se compacta automáticamente en un mapa cromático que revela la traza óptima sin abrumar visualmente.</li>
+                        <li><strong>🎯 Modo Desafío (Traceback Game):</strong> El simulador oculta la ruta óptima. El alumno debe rastrear el camino de regreso haciendo clic desde el extremo inferior derecho hasta el origen para validar su comprensión.</li>
                     </ul>
                 </div>
+
+                <!-- MÓDULO 2 -->
+                <div class="panel-card" style="border-left: 4px solid var(--accent-green);">
+                    <h3 style="color: var(--accent-green); font-size: 1.2rem; margin-top: 0; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem;">
+                        🌳 Módulo 2: Filogenia y Árboles Evolutivos (Algoritmo UPGMA)
+                    </h3>
+                    <p style="color: var(--text-secondary); line-height: 1.6; font-size: 0.9rem;">
+                        Enseña los fundamentos de la taxonomía computacional y la agrupación jerárquica a partir de matrices de distancia evolutiva o secuencias alineadas.
+                    </p>
+                    <ul style="color: var(--text-secondary); line-height: 1.7; font-size: 0.9rem; margin-left: 1.2rem; margin-top: 0.5rem; margin-bottom: 0;">
+                        <li><strong>Reducción Matricial Paso a Paso:</strong> Observa en vivo cómo el algoritmo encuentra el par de especies con la menor distancia evolutiva, las agrupa en un clado y recalcula las distancias medias con las demás especies.</li>
+                        <li><strong>Renderizado de Dendrogramas SVG:</strong> Dibuja el árbol filogenético marcando proporcionalmente las alturas temporales (reloj molecular) de los nodos ancestrales.</li>
+                        <li><strong>Presets de Relevancia Biológica:</strong> Incluye casos reales como la evolución de Primates Homínidos y cepas de gripe aviar/porcina (H1N1, H5N1).</li>
+                        <li><strong>🎯 Modo Desafío (Matriz Misteriosa):</strong> Se presenta una matriz de divergencia evolutiva incompleta; el estudiante debe deducir y calcular el valor de la celda faltante para poder construir el árbol filogenético.</li>
+                    </ul>
+                </div>
+
+                <!-- MÓDULO 3 -->
+                <div class="panel-card" style="border-left: 4px solid var(--accent-yellow);">
+                    <h3 style="color: var(--accent-yellow); font-size: 1.2rem; margin-top: 0; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem;">
+                        🔬 Módulo 3: Estructura Molecular 3D y Simulación de Mutaciones
+                    </h3>
+                    <p style="color: var(--text-secondary); line-height: 1.6; font-size: 0.9rem;">
+                        Conecta la secuencia unidimensional con el espacio tridimensional utilizando el motor de renderizado acelerado por hardware <strong>3Dmol.js</strong> y modelos del Protein Data Bank (PDB).
+                    </p>
+                    <ul style="color: var(--text-secondary); line-height: 1.7; font-size: 0.9rem; margin-left: 1.2rem; margin-top: 0.5rem; margin-bottom: 0;">
+                        <li><strong>Simulación Mutacional en Vivo:</strong> Selecciona una posición y un nuevo aminoácido. El sistema reemplaza el residuo en el modelo 3D y resalta en color magenta y ámbar el punto exacto de la mutación.</li>
+                        <li><strong>Diagnóstico Biofísico y Electrostático:</strong> Evalúa el impacto de la mutación (ej. cambio de ácido hidrofílico por valina hidrofóbica en la Hemoglobina E6V, causante de la Anemia Falciforme).</li>
+                        <li><strong>Multi-Representación:</strong> Alterna dinámicamente entre representaciones de Cinta (Cartoon), Superficie Molecular electrostática y Esferas/Varillas (Stick & Sphere).</li>
+                        <li><strong>🎯 Modo Desafío (Diagnóstico Clínico):</strong> Se presenta un caso clínico hospitalario; el alumno debe simular mutaciones candidatas hasta identificar aquella que restablece la estabilidad estructural de la proteína.</li>
+                    </ul>
+                </div>
+
+                <!-- MÓDULO 4 -->
+                <div class="panel-card" style="border-left: 4px solid var(--accent-purple);">
+                    <h3 style="color: var(--accent-purple); font-size: 1.2rem; margin-top: 0; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem;">
+                        🧩 Módulo 4: Genómica (Gráficos de De Bruijn & Dogma Central)
+                    </h3>
+                    <p style="color: var(--text-secondary); line-height: 1.6; font-size: 0.9rem;">
+                        Explora la genómica moderna en dos frentes: la reconstrucción computacional de genomas a partir de fragmentos cortos y el flujo de información biológica celular.
+                    </p>
+                    <ul style="color: var(--text-secondary); line-height: 1.7; font-size: 0.9rem; margin-left: 1.2rem; margin-top: 0.5rem; margin-bottom: 0;">
+                        <li><strong>Ensamble por Gráficos de De Bruijn (k-mers):</strong> Descompone lecturas (reads) de ADN o cadenas binarias en nodos (k-1)-mers y aristas k-mers. Emplea el <em>Algoritmo de Hierholzer</em> para trazar el Camino Euleriano perfecto y reconstruir la cadena consenso sin desbordamientos.</li>
+                        <li><strong>Simulación del Dogma Central:</strong> Transcribe hebras de ADN codificante a ARNm (reemplazando Timina por Uracilo) y simula el avance del ribosoma agrupando codones para sintetizar cadenas polipeptídicas en tiempo real.</li>
+                        <li><strong>🎯 Modo Desafío (Código Genético Roto):</strong> Un paciente presenta una mutación sin sentido (Nonsense) que genera un codón de parada prematuro (UAA). El alumno debe elegir qué nucleótido mutar para reparar el gen y permitir la traducción ribosomal completa.</li>
+                    </ul>
+                </div>
+
+                <!-- CONEXIONES INTER-MODULARES -->
+                <div class="panel-card" style="background: linear-gradient(135deg, rgba(0, 255, 204, 0.08), rgba(255, 0, 84, 0.08)); border: 1px solid var(--accent-cyan);">
+                    <h3 style="color: white; font-size: 1.15rem; margin-top: 0; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.5rem;">
+                        ⚡ Conexiones Inter-Modulares: Un Ecosistema Sin Fronteras
+                    </h3>
+                    <p style="color: var(--text-secondary); line-height: 1.6; font-size: 0.9rem; margin-bottom: 0;">
+                        Para demostrar que la bioinformática es un pipeline integrado, el simulador permite transferir resultados entre módulos con un solo clic:
+                        <br><br>
+                        1️⃣ <strong>De Ensamble (Mód. 4) ➔ Alineamiento (Mód. 1):</strong> Una vez ensamblado un contig consenso (ej. el gen HBB o una cadena binaria traducida a ADN), pulsa el botón de transferencia para inyectarlo como Secuencia 1 en el alineador de Needleman-Wunsch.
+                        <br><br>
+                        2️⃣ <strong>De Traducción (Mód. 4) ➔ Estructura 3D (Mód. 3):</strong> Al traducir el péptido con la mutación falciforme (Valina en posición 6), podrás enviarlo al Módulo 3 para cargar la hemoglobina en 3Dmol.js y visualizar el choque estérico resultante.
+                    </p>
+                </div>
+
             </div>
         </section>
 
     </main>
 
     <footer style="text-align: center; padding: 2rem; border-top: 1px solid var(--border-color); color: var(--text-secondary); font-size: 0.85rem; margin-top: 3rem;">
-        Desarrollado para fines pedagógicos en bioinformática &bull; HTML5, CSS3 y JS Vanilla &bull; Listo para GitHub Pages
+        Desarrollado para fines pedagógicos en bioinformática &bull; HTML5, CSS3 y JS Vanilla
     </footer>
 
     <!-- SCRIPTS -->
@@ -529,6 +725,7 @@
     <script src="js/alignment.js"></script>
     <script src="js/phylogeny.js"></script>
     <script src="js/structure.js"></script>
+    <script src="js/genomics.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

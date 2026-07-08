@@ -62,6 +62,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (targetId === "mod-structure" && typeof initStructureModule === "function") {
                     initStructureModule();
                 }
+                if (targetId === "mod-genomics" && typeof initGenomicsModule === "function") {
+                    initGenomicsModule();
+                }
             }
         });
     });
@@ -1581,6 +1584,514 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => loadSelectedPreset("hemoglobin"), 200);
     }
 
+    // =========================================================================
+    // MÓDULO 4: GENÓMICA (ENSAMBLE DE BRUIJN & DOGMA CENTRAL)
+    // =========================================================================
+    let genomicsInitialized = false;
+
+    function initGenomicsModule() {
+        if (genomicsInitialized) return;
+        const btnModeDebruijn = document.getElementById("btn-mode-debruijn");
+        const btnModeDogma = document.getElementById("btn-mode-dogma");
+        if (!btnModeDebruijn || !window.debruijnSim) return;
+        genomicsInitialized = true;
+
+        const presetSelect = document.getElementById("genomics-preset-select");
+        const descBox = document.getElementById("genomics-desc-box");
+        const debruijnInputs = document.getElementById("debruijn-inputs");
+        const dogmaInputs = document.getElementById("dogma-inputs");
+        const readsInput = document.getElementById("genomics-reads-input");
+        const kSlider = document.getElementById("genomics-k-slider");
+        const kVal = document.getElementById("genomics-k-val");
+        const dnaInput = document.getElementById("genomics-dna-input");
+        const btnCalcDebruijn = document.getElementById("btn-calc-debruijn");
+        const btnCalcDogma = document.getElementById("btn-calc-dogma");
+        const btnStepPrev = document.getElementById("btn-genomics-step-prev");
+        const btnStepNext = document.getElementById("btn-genomics-step-next");
+        const btnPlay = document.getElementById("btn-genomics-play");
+        const btnReset = document.getElementById("btn-genomics-reset");
+        const btnChallenge = document.getElementById("btn-genomics-challenge");
+        const connectionBox = document.getElementById("genomics-connection-box");
+        const connText = document.getElementById("genomics-conn-text");
+        const btnSendMod1 = document.getElementById("btn-send-to-mod1");
+        const btnSendMod3 = document.getElementById("btn-send-to-mod3");
+        const visualTitle = document.getElementById("genomics-visual-title");
+        const stepCounter = document.getElementById("genomics-step-counter");
+        const challengePanel = document.getElementById("genomics-challenge-panel");
+        const challengeTitle = document.getElementById("genomics-challenge-title");
+        const challengeDesc = document.getElementById("genomics-challenge-desc");
+        const challengeOptions = document.getElementById("genomics-challenge-options");
+        const challengeFeedback = document.getElementById("genomics-challenge-feedback");
+        const chalkboard = document.getElementById("genomics-chalkboard");
+        const consensusBox = document.getElementById("genomics-consensus-box");
+        const consensusSeq = document.getElementById("genomics-consensus-seq");
+
+        let currentTool = "debruijn"; // 'debruijn' or 'dogma'
+        let currentStep = 0;
+        let maxSteps = 0;
+        let playInterval = null;
+        let inChallenge = false;
+
+        function populatePresetsForTool(tool) {
+            if (!presetSelect || typeof GENOMICS_PRESETS === "undefined") return;
+            presetSelect.innerHTML = "";
+            Object.keys(GENOMICS_PRESETS).forEach(key => {
+                const p = GENOMICS_PRESETS[key];
+                if (p.type === tool && p.type !== "challenge") {
+                    const opt = document.createElement("option");
+                    opt.value = key;
+                    opt.textContent = p.name;
+                    presetSelect.appendChild(opt);
+                }
+            });
+        }
+
+        function switchTool(tool) {
+            currentTool = tool;
+            stopAutoPlay();
+            inChallenge = false;
+            if (challengePanel) challengePanel.classList.add("hidden");
+            if (btnChallenge) {
+                btnChallenge.innerHTML = "🎯 Modo Desafío: Código Roto";
+                btnChallenge.style.background = "";
+            }
+            populatePresetsForTool(tool);
+
+            if (tool === "debruijn") {
+                btnModeDebruijn.style.background = "var(--accent-purple)";
+                btnModeDebruijn.style.borderColor = "var(--accent-purple)";
+                btnModeDogma.style.background = "transparent";
+                btnModeDogma.style.borderColor = "transparent";
+                debruijnInputs.classList.remove("hidden");
+                dogmaInputs.classList.add("hidden");
+                visualTitle.textContent = "🌐 Gráficos de De Bruijn: Nodos (k-1 mers) y Aristas (k-mers)";
+                visualTitle.style.color = "var(--accent-cyan)";
+                if (presetSelect) presetSelect.value = "binary_debruijn";
+                loadPreset("binary_debruijn");
+            } else {
+                btnModeDogma.style.background = "var(--accent-cyan)";
+                btnModeDogma.style.borderColor = "var(--accent-cyan)";
+                btnModeDebruijn.style.background = "transparent";
+                btnModeDebruijn.style.borderColor = "transparent";
+                debruijnInputs.classList.add("hidden");
+                dogmaInputs.classList.remove("hidden");
+                visualTitle.textContent = "🧬 Dogma Central: Transcripción (ARNm) y Traducción Ribosomal";
+                visualTitle.style.color = "var(--accent-cyan)";
+                if (presetSelect) presetSelect.value = "sickle_dogma";
+                loadPreset("sickle_dogma");
+            }
+        }
+
+        btnModeDebruijn.addEventListener("click", () => switchTool("debruijn"));
+        btnModeDogma.addEventListener("click", () => switchTool("dogma"));
+
+        if (kSlider && kVal) {
+            kSlider.addEventListener("input", () => {
+                kVal.textContent = `k = ${kSlider.value}`;
+            });
+        }
+
+        function loadPreset(key) {
+            stopAutoPlay();
+            const p = GENOMICS_PRESETS[key];
+            if (!p) return;
+
+            if (descBox) {
+                descBox.innerHTML = `<strong>${p.name}:</strong> ${p.description}<br><br><span style="color: var(--accent-yellow); font-weight: 600;">${p.connectionNote || ""}</span>`;
+            }
+
+            if (p.type === "debruijn") {
+                if (currentTool !== "debruijn") {
+                    currentTool = "debruijn";
+                    btnModeDebruijn.style.background = "var(--accent-purple)";
+                    btnModeDebruijn.style.borderColor = "var(--accent-purple)";
+                    btnModeDogma.style.background = "transparent";
+                    btnModeDogma.style.borderColor = "transparent";
+                    debruijnInputs.classList.remove("hidden");
+                    dogmaInputs.classList.add("hidden");
+                    visualTitle.textContent = "🌐 Gráficos de De Bruijn: Nodos (k-1 mers) y Aristas (k-mers)";
+                    visualTitle.style.color = "var(--accent-cyan)";
+                }
+                if (readsInput) readsInput.value = p.reads.join(", ");
+                if (kSlider) { kSlider.value = p.k || 4; if (kVal) kVal.textContent = `k = ${p.k || 4}`; }
+                runDeBruijn();
+            } else if (p.type === "dogma") {
+                if (currentTool !== "dogma") {
+                    currentTool = "dogma";
+                    btnModeDogma.style.background = "var(--accent-cyan)";
+                    btnModeDogma.style.borderColor = "var(--accent-cyan)";
+                    btnModeDebruijn.style.background = "transparent";
+                    btnModeDebruijn.style.borderColor = "transparent";
+                    debruijnInputs.classList.add("hidden");
+                    dogmaInputs.classList.remove("hidden");
+                    visualTitle.textContent = "🧬 Dogma Central: Transcripción (ARNm) y Traducción Ribosomal";
+                    visualTitle.style.color = "var(--accent-cyan)";
+                }
+                if (dnaInput) dnaInput.value = p.dna;
+                runDogma();
+            } else if (p.type === "challenge") {
+                startChallenge();
+            }
+        }
+
+        if (presetSelect) {
+            presetSelect.addEventListener("change", () => {
+                loadPreset(presetSelect.value);
+            });
+        }
+
+        function updateStepCounter() {
+            if (stepCounter) stepCounter.textContent = `Paso: ${currentStep} / ${maxSteps}`;
+            if (btnStepPrev) {
+                btnStepPrev.disabled = (currentStep <= 0);
+                btnStepPrev.style.opacity = (currentStep <= 0) ? "0.35" : "1";
+                btnStepPrev.style.cursor = (currentStep <= 0) ? "not-allowed" : "pointer";
+            }
+            if (btnStepNext) {
+                btnStepNext.disabled = (currentStep >= maxSteps);
+                btnStepNext.style.opacity = (currentStep >= maxSteps) ? "0.35" : "1";
+                btnStepNext.style.cursor = (currentStep >= maxSteps) ? "not-allowed" : "pointer";
+            }
+        }
+
+        function runDeBruijn() {
+            stopAutoPlay();
+            const rawReads = readsInput ? readsInput.value : "";
+            const reads = rawReads.split(/[\s,]+/).filter(r => r.trim().length > 0);
+            const k = kSlider ? parseInt(kSlider.value) : 4;
+
+            if (reads.length === 0) {
+                alert("Por favor ingresa al menos una lectura (read) de ADN.");
+                return;
+            }
+
+            window.debruijnSim.loadReads(reads, k);
+            maxSteps = window.debruijnSim.assemblySteps.length - 1;
+            currentStep = 0; // Iniciar en Paso 0 para no mostrar el grafo ya resuelto
+            renderDeBruijnStep(currentStep);
+        }
+
+        function getDNAConsensus(str) {
+            if (!str) return "";
+            if (/^[01]+$/.test(str)) {
+                let letters = "";
+                for (let i = 0; i < str.length; i += 2) {
+                    const pair = str.substring(i, i + 2);
+                    if (pair === "00" || pair === "0") letters += "A";
+                    else if (pair === "01" || pair === "1") letters += "C";
+                    else if (pair === "10") letters += "G";
+                    else if (pair === "11") letters += "T";
+                }
+                return letters;
+            }
+            return str;
+        }
+
+        function renderDeBruijnStep(step) {
+            currentStep = step;
+            updateStepCounter();
+            window.debruijnSim.renderGraphSVG("genomics-visual-container", step);
+            
+            const stepData = window.debruijnSim.assemblySteps[step];
+            if (stepData && chalkboard) {
+                chalkboard.innerHTML = stepData.desc;
+            }
+
+            if (step === maxSteps && consensusBox && consensusSeq) {
+                const rawContig = window.debruijnSim.consensusSequence;
+                const dnaContig = getDNAConsensus(rawContig);
+                const isBinary = /^[01]+$/.test(rawContig);
+
+                if (isBinary) {
+                    consensusSeq.innerHTML = `${rawContig} <br><span style="color: var(--accent-cyan); font-size: 0.9em; font-weight: normal;">[Traducción ADN para Módulo 1: <strong>${dnaContig}</strong>]</span>`;
+                } else {
+                    consensusSeq.textContent = rawContig;
+                }
+                consensusBox.classList.remove("hidden");
+                
+                if (connectionBox && btnSendMod1) {
+                    connectionBox.classList.remove("hidden");
+                    connText.innerHTML = `🏆 Contig Consenso: <code>${isBinary ? dnaContig : rawContig}</code> ensamblado con éxito y listo para transferir.`;
+                    btnSendMod1.classList.remove("hidden");
+                    if (btnSendMod3) btnSendMod3.classList.add("hidden");
+                }
+            } else if (consensusBox) {
+                consensusBox.classList.add("hidden");
+                if (connectionBox) connectionBox.classList.add("hidden");
+            }
+        }
+
+        function runDogma() {
+            stopAutoPlay();
+            const dnaText = dnaInput ? dnaInput.value : "";
+            if (!dnaText || dnaText.length < 3) {
+                alert("Por favor ingresa una secuencia de ADN codificante de al menos 3 nucleótidos.");
+                return;
+            }
+
+            window.dogmaSim.loadDNA(dnaText);
+            maxSteps = window.dogmaSim.codons.length + 1;
+            currentStep = 0;
+            renderDogmaStep(0);
+        }
+
+        function renderDogmaStep(step) {
+            currentStep = step;
+            updateStepCounter();
+            window.dogmaSim.renderVisual("genomics-visual-container", step);
+
+            if (chalkboard) {
+                if (step === 0) {
+                    chalkboard.innerHTML = `🧬 <strong>Paso 0 - Gen ADN:</strong> Hebra codificante original. Presiona "Siguiente Paso" para que la ARN Polimerasa transcriba el mensaje en ARNm.`;
+                    if (consensusBox) consensusBox.classList.add("hidden");
+                    if (connectionBox) connectionBox.classList.add("hidden");
+                } else if (step === 1) {
+                    chalkboard.innerHTML = `📨 <strong>Paso 1 - Transcripción (ARNm):</strong> La enzima ARN Polimerasa transcribió el ADN usando Uracilo (U) en lugar de Timina (T). Ahora el ribosoma leerá el ARNm en grupos de 3 bases (Codones).`;
+                    if (consensusBox) consensusBox.classList.add("hidden");
+                    if (connectionBox) connectionBox.classList.add("hidden");
+                } else {
+                    const codonIdx = step - 2;
+                    const c = window.dogmaSim.codons[codonIdx];
+                    if (c) {
+                        chalkboard.innerHTML = `🔬 <strong>Paso ${step} - Traducción Ribosomal:</strong> El codón ARNm <code>${c.codon}</code> es leído por el ARN de transferencia (ARNt), acoplando el aminoácido <strong>${c.aaInfo.name} (${c.aaInfo.code})</strong> - Tipo: <em>${c.aaInfo.type}</em>.`;
+                    }
+                    if (step === maxSteps && consensusBox && consensusSeq) {
+                        const peptideStr = window.dogmaSim.peptides.map(p => p.aa).join("-");
+                        consensusSeq.textContent = peptideStr;
+                        consensusBox.classList.remove("hidden");
+
+                        if (connectionBox && btnSendMod3) {
+                            connectionBox.classList.remove("hidden");
+                            connText.innerHTML = `🧬 Cadena Peptídica Sintetizada: <code>${peptideStr}</code>.`;
+                            btnSendMod3.classList.remove("hidden");
+                            if (btnSendMod1) btnSendMod1.classList.add("hidden");
+                        }
+                    }
+                }
+            }
+        }
+
+        if (btnCalcDebruijn) btnCalcDebruijn.addEventListener("click", runDeBruijn);
+        if (btnCalcDogma) btnCalcDogma.addEventListener("click", runDogma);
+
+        if (btnStepPrev) {
+            btnStepPrev.addEventListener("click", () => {
+                stopAutoPlay();
+                if (currentStep > 0) {
+                    if (currentTool === "debruijn") renderDeBruijnStep(currentStep - 1);
+                    else renderDogmaStep(currentStep - 1);
+                }
+            });
+        }
+        if (btnStepNext) {
+            btnStepNext.addEventListener("click", () => {
+                stopAutoPlay();
+                if (currentStep < maxSteps) {
+                    if (currentTool === "debruijn") renderDeBruijnStep(currentStep + 1);
+                    else renderDogmaStep(currentStep + 1);
+                }
+            });
+        }
+
+        function stopAutoPlay() {
+            if (playInterval) {
+                clearInterval(playInterval);
+                playInterval = null;
+                if (btnPlay) btnPlay.innerHTML = "▶️ Reproducir Ensamble / Traducción";
+            }
+        }
+
+        if (btnPlay) {
+            btnPlay.addEventListener("click", () => {
+                if (playInterval) {
+                    stopAutoPlay();
+                    return;
+                }
+                btnPlay.innerHTML = "⏸️ Detener Reproducción";
+                if (currentStep >= maxSteps) {
+                    if (currentTool === "debruijn") renderDeBruijnStep(0);
+                    else renderDogmaStep(0);
+                }
+                playInterval = setInterval(() => {
+                    if (currentStep < maxSteps) {
+                        if (currentTool === "debruijn") renderDeBruijnStep(currentStep + 1);
+                        else renderDogmaStep(currentStep + 1);
+                    } else {
+                        stopAutoPlay();
+                    }
+                }, 1000);
+            });
+        }
+
+        if (btnReset) {
+            btnReset.addEventListener("click", () => {
+                stopAutoPlay();
+                if (currentTool === "debruijn") renderDeBruijnStep(0);
+                else renderDogmaStep(0);
+            });
+        }
+
+        // --- CONEXIONES INTER-MODULARES ---
+        if (btnSendMod1) {
+            btnSendMod1.addEventListener("click", () => {
+                const rawContig = window.debruijnSim.consensusSequence;
+                if (!rawContig) return;
+                const contig = getDNAConsensus(rawContig);
+
+                const tabMod1 = document.querySelector('.nav-tab[data-target="mod-alignment"]');
+                if (tabMod1) tabMod1.click();
+
+                const seq1 = document.getElementById("seq1-input");
+                const seq2 = document.getElementById("seq2-input");
+                const presetMod1 = document.getElementById("preset-select");
+                const editNotice = document.getElementById("edit-notice");
+                if (presetMod1) {
+                    presetMod1.value = "custom";
+                    presetMod1.dispatchEvent(new Event("change"));
+                }
+                if (seq1) {
+                    seq1.readOnly = false;
+                    seq1.classList.remove("readonly-box");
+                    seq1.value = contig;
+                }
+                if (seq2) {
+                    seq2.readOnly = false;
+                    seq2.classList.remove("readonly-box");
+                }
+                if (editNotice) {
+                    editNotice.className = "notice-box notice-editable";
+                    editNotice.innerHTML = `✏️ <strong>Modo Edición Libre (Conexión Módulo 4 ➔ Módulo 1):</strong> El Contig ensamblado en Gráficos de De Bruijn (convertido a letras ADN: <code>${contig}</code>) ha sido inyectado automáticamente como Secuencia 1. Ambas secuencias están totalmente desbloqueadas para editarse o calcular el alineamiento.`;
+                }
+
+                alert(`⚡ ¡Conexión Exitosa!\n\nEl contig ensamblado (en ADN: "${contig}") ha sido transferido al Módulo 1 (Alineamiento de Secuencias).`);
+            });
+        }
+
+        if (btnSendMod3) {
+            btnSendMod3.addEventListener("click", () => {
+                const tabMod3 = document.querySelector('.nav-tab[data-target="mod-structure"]');
+                if (tabMod3) tabMod3.click();
+
+                if (window.phyloStructureSim) {
+                    const structPreset = document.getElementById("struct-preset-select");
+                    const resiNum = document.getElementById("struct-resi-num");
+                    const chainSel = document.getElementById("struct-chain-select");
+                    const origSel = document.getElementById("struct-orig-amino");
+                    const mutSel = document.getElementById("struct-mut-amino");
+
+                    if (structPreset) structPreset.value = "hemoglobin";
+                    window.phyloStructureSim.loadPreset("hemoglobin", () => {
+                        if (resiNum) resiNum.value = 6;
+                        if (chainSel) chainSel.value = "B";
+                        if (origSel) origSel.value = "GLU";
+                        if (mutSel) mutSel.value = "VAL";
+
+                        setTimeout(() => {
+                            const report = window.phyloStructureSim.simulateMutation(6, "B", "GLU", "VAL");
+                            if (typeof renderBiophysicalReport === "function") renderBiophysicalReport(report);
+                            alert("⚡ ¡Conexión Exitosa Dogma Central ➔ Módulo 3!\n\nHas traducido el péptido con la mutación falciforme (VAL en pos #6). Ahora estás observando el choque electrostático en la estructura tridimensional de la hemoglobina en 3Dmol.js.");
+                        }, 500);
+                    });
+                }
+            });
+        }
+
+        // --- MODO DESAFÍO GAMIFICADO ---
+        function startChallenge() {
+            stopAutoPlay();
+            inChallenge = true;
+            if (btnChallenge) {
+                btnChallenge.innerHTML = "❌ Salir del Desafío";
+                btnChallenge.style.background = "#ff0054";
+            }
+            if (challengePanel) challengePanel.classList.remove("hidden");
+            if (consensusBox) consensusBox.classList.add("hidden");
+            if (connectionBox) connectionBox.classList.add("hidden");
+
+            const chData = GENOMICS_PRESETS.challenge_genomics.challengeData;
+            if (challengeTitle) challengeTitle.innerHTML = `🎯 ${chData.title}`;
+            if (challengeDesc) challengeDesc.textContent = chData.problemDesc;
+            if (challengeFeedback) challengeFeedback.classList.add("hidden");
+
+            window.dogmaSim.loadDNA(chData.dnaSequence);
+            maxSteps = window.dogmaSim.codons.length + 1;
+            currentStep = 3;
+            updateStepCounter();
+            window.dogmaSim.renderVisual("genomics-visual-container", currentStep);
+
+            if (chalkboard) {
+                chalkboard.innerHTML = `🚨 <strong>¡ALERTA RIBOSOMAL!</strong> La traducción se detuvo en el codón #3 (<code>UAA</code> - STOP Prematuro / Ocre). La cadena peptídica quedó truncada en 2 aminoácidos (Met-Phe). Selecciona la mutación de nucleótido para reparar el gen.`;
+            }
+
+            if (challengeOptions) {
+                challengeOptions.innerHTML = "";
+                chData.options.forEach(opt => {
+                    const btn = document.createElement("button");
+                    btn.className = "challenge-opt-btn";
+                    btn.style.flexDirection = "column";
+                    btn.style.alignItems = "flex-start";
+                    btn.innerHTML = `<span style="font-size: 1.1rem; color: var(--accent-yellow); font-weight: 800;">🔬 Mutar 3ª base a '${opt.base}'</span>
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);">ARNm resultante: <strong>${opt.mrna}</strong></span>`;
+                    
+                    btn.addEventListener("click", () => {
+                        if (challengeFeedback) {
+                            challengeFeedback.classList.remove("hidden");
+                            challengeFeedback.className = opt.correct ? "notice-box notice-unlocked" : "notice-box notice-locked";
+                            challengeFeedback.style.borderColor = opt.correct ? "var(--accent-green)" : "var(--accent-red)";
+                            challengeFeedback.style.background = opt.correct ? "rgba(57, 255, 20, 0.15)" : "rgba(255, 0, 84, 0.15)";
+                            challengeFeedback.innerHTML = opt.feedback;
+                        }
+                        if (opt.correct) {
+                            setTimeout(() => {
+                                window.dogmaSim.loadDNA(opt.newDna);
+                                maxSteps = window.dogmaSim.codons.length + 1;
+                                currentStep = maxSteps;
+                                updateStepCounter();
+                                window.dogmaSim.renderVisual("genomics-visual-container", currentStep);
+                                if (chalkboard) chalkboard.innerHTML = `🏆 <strong>¡GEN REPARADO CON ÉXITO!</strong> El codón ahora es <code>GAA</code> (Glutamato). El ribosoma completó la síntesis de la proteína funcional: <code>Met-Phe-Glu-Arg-Ser</code>.`;
+                                if (consensusBox && consensusSeq) {
+                                    consensusSeq.textContent = "Met-Phe-Glu-Arg-Ser";
+                                    consensusBox.classList.remove("hidden");
+                                }
+                                alert("🏆 ¡FELICIDADES! ¡HAS REPARADO EL CÓDIGO GENÉTICO!\n\nAl mutar la base T por G, convertiste un codón de parada prematuro (UAA) en Glutamato (GAA), permitiendo al ribosoma sintetizar la proteína completa. Has superado con éxito el Modo Desafío de Genómica.");
+                                if (btnChallenge) {
+                                    btnChallenge.innerHTML = "🎯 Modo Desafío: Código Roto";
+                                    btnChallenge.style.background = "";
+                                }
+                                if (challengePanel) challengePanel.classList.add("hidden");
+                                inChallenge = false;
+                                if (currentTool === "debruijn") switchTool("debruijn");
+                                else switchTool("dogma");
+                            }, 1000);
+                        }
+                    });
+                    challengeOptions.appendChild(btn);
+                });
+            }
+        }
+
+        if (btnChallenge) {
+            btnChallenge.addEventListener("click", () => {
+                if (inChallenge) {
+                    inChallenge = false;
+                    btnChallenge.innerHTML = "🎯 Modo Desafío: Código Roto";
+                    btnChallenge.style.background = "";
+                    if (challengePanel) challengePanel.classList.add("hidden");
+                    if (currentTool === "debruijn") switchTool("debruijn");
+                    else switchTool("dogma");
+                } else {
+                    startChallenge();
+                }
+            });
+        }
+
+        setTimeout(() => switchTool("debruijn"), 250);
+    }
+
+    // Inicializar Módulo 4 si ya está activo o listo
+    initGenomicsModule();
+
     // AL CARGAR LA PÁGINA: NO AUTO-CALCULAR, DEJAR RESULTADOS OCULTOS HASTA QUE PULSEN EL BOTÓN
     if (resultsArea) resultsArea.classList.add("hidden");
 });
+

@@ -936,3 +936,52 @@ input[type=range] {
     border-color: var(--accent-cyan);
     transform: translateY(-2px);
 }
+
+/* --- MÓDULO 4: GENÓMICA (DE BRUIJN & DOGMA CENTRAL) --- */
+.debruijn-node {
+    cursor: pointer;
+}
+.debruijn-node circle {
+    transition: all 0.25s ease;
+}
+.debruijn-node:hover circle {
+    stroke: var(--accent-cyan);
+    stroke-width: 4px;
+    fill: #1e293b;
+    filter: drop-shadow(0 0 14px var(--accent-cyan));
+}
+.debruijn-node:hover text {
+    fill: var(--accent-cyan);
+    font-weight: 900;
+}
+
+.dogma-track {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 1rem;
+    transition: all 0.4s ease;
+}
+.codon-box {
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+.codon-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0, 255, 204, 0.3);
+}
+.peptide-bead {
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.peptide-bead:hover {
+    transform: scale(1.15) rotate(3deg);
+    filter: brightness(1.2);
+}
+@keyframes beadPop {
+    0% { transform: scale(0); opacity: 0; }
+    70% { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+}
+.bead-pop {
+    animation: beadPop 0.4s ease forwards;
+}
